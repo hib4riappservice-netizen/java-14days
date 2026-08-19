@@ -1,0 +1,23 @@
+# ビルド生成物
+target/
+out/
+build/
+*.class
+*.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 秘密情報・環境依存設定（絶対にコミットしない）
+application-local.yml
+.env
+
+# ログ（毎回変わるうえ、個人情報が入りうる）
+*.log
+logs/
