@@ -592,7 +592,7 @@ docker run --rm hello-world   # "Hello from Docker!" が出れば成功
 ```yaml
 services:
   db:
-    image: postgres:16
+    image: postgres:18
     container_name: attendance-db
     environment:
       POSTGRES_DB: attendance
@@ -736,11 +736,11 @@ public class Hello {
 ```
 
 **最後に、以下の4つができていることを確認してください（Day 0 の完了条件です）。**
-- [ ] `git push` したものが GitHub のブラウザ画面で見える（§4-2）
-- [ ] `.gitignore` があり、`git status` に `out/` や `.idea/` が出てこない（§4-2）
-- [ ] `week1` が Maven プロジェクトになっていて `mvn clean test` が BUILD SUCCESS（§4-3）
-- [ ] `docker run --rm hello-world` が成功する（§5-1）
-- [ ] **5432番ポートが空いている**（§0-5。`Get-NetTCPConnection -LocalPort 5432 -State Listen` で何も出ないこと）
+- [x] `git push` したものが GitHub のブラウザ画面で見える（§4-2）
+- [x] `.gitignore` があり、`git status` に `out/` や `.idea/` が出てこない（§4-2）
+- [x] `week1` が Maven プロジェクトになっていて `mvn clean test` が BUILD SUCCESS（§4-3）
+- [x] `docker run --rm hello-world` が成功する（§5-1）
+- [x] **5432番ポートが空いている**（§0-5。`Get-NetTCPConnection -LocalPort 5432 -State Listen` で何も出ないこと）
 
 ---
 
@@ -748,18 +748,18 @@ public class Hello {
 
 `java-14days` の直下に置くのは、**ファイル4つとフォルダ6つ**だけです。
 
-| 名前 | 種類 | 中身 | 使う日 |
-|---|---|---|---|
-| `README.md` | ファイル | リポジトリの説明（Day 14 で完成させる） | Day 14 |
-| `.gitignore` | ファイル | Gitに載せないものの一覧（§4-2） | Day 0 |
-| `.gitattributes` | ファイル | 改行コードをLFに固定（§4-2 ステップ0-2） | Day 0 |
-| `compose.yaml` | ファイル | ローカル用 PostgreSQL の定義（§5-2） | Day 8〜 |
-| `.github/workflows/` | フォルダ | CI の定義（`ci.yml`） | Day 13 |
-| `docs/` | フォルダ | **教材**（00〜12）。自分では書き換えない | 毎日 |
-| `log/` | フォルダ | 学習ログ `day00.md` 〜 `day14.md` | 毎日 |
-| `week1/` | フォルダ | Java の練習コード（Maven プロジェクト。§4-3） | Day 0〜7 |
-| `week2/` | フォルダ | SQL ファイル（`schema.sql` / `sample-data.sql` / `queries.sql`） | Day 8 |
-| `attendance-api/` | フォルダ | **成果物**の Spring Boot プロジェクト | Day 9〜14 |
+| 名前                   | 種類   | 中身                                                         | 使う日      |
+| -------------------- | ---- | ---------------------------------------------------------- | -------- |
+| `README.md`          | ファイル | リポジトリの説明（Day 14 で完成させる）                                    | Day 14   |
+| `.gitignore`         | ファイル | Gitに載せないものの一覧（§4-2）                                        | Day 0    |
+| `.gitattributes`     | ファイル | 改行コードをLFに固定（§4-2 ステップ0-2）                                  | Day 0    |
+| `compose.yaml`       | ファイル | ローカル用 PostgreSQL の定義（§5-2）                                 | Day 8〜   |
+| `.github/workflows/` | フォルダ | CI の定義（`ci.yml`）                                           | Day 13   |
+| `docs/`              | フォルダ | **教材**（00〜12）。自分では書き換えない                                   | 毎日       |
+| `log/`               | フォルダ | 学習ログ `day00.md` 〜 `day14.md`                               | 毎日       |
+| `week1/`             | フォルダ | Java の練習コード（Maven プロジェクト。§4-3）                             | Day 0〜7  |
+| `week2/`             | フォルダ | SQL ファイル（`schema.sql` / `sample-data.sql` / `queries.sql`） | Day 8    |
+| `attendance-api/`    | フォルダ | **成果物**の Spring Boot プロジェクト                                | Day 9〜14 |
 
 ### `week1/` の中（§4-3 で作る Maven プロジェクト）
 

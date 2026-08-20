@@ -97,10 +97,10 @@ public class Hello {
 - [x] コンパイルとは何をする作業か説明できる
 - [x] `.java` と `.class` の違いを説明できる
 - [x] ターミナルから `java -version` と `git --version` が実行できる
-- [ ] GitHub に自分のコードが上がっている（ブラウザで見える）
+- [x] GitHub に自分のコードが上がっている（ブラウザで見える）
 - [ ] エラーメッセージを3種類見て、それぞれ何を意味するか自分の言葉で説明できる
-- [ ] `week1` で `mvn clean test` が BUILD SUCCESS になる
-- [ ] `docker run --rm hello-world` が動く（Day 8 で使います）
+- [x] `week1` で `mvn clean test` が BUILD SUCCESS になる
+- [x] `docker run --rm hello-world` が動く（Day 8 で使います）
 
 ---
 
