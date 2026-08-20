@@ -273,10 +273,11 @@ build/
 *.class
 *.jar
 
-# IDE
+# IDE ・ エディタ
 .idea/
 *.iml
 .vscode/
+.obsidian/
 
 # OS
 .DS_Store
