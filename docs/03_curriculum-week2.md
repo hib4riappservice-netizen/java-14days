@@ -229,7 +229,7 @@ for (Employee e : employees) {
    > 本教材では `employees.department` を文字列のまま持ちます。**正規化が常に正しいわけではなく、「部署マスタを別途管理する要件が無いなら、文字列で持つ方が単純で速い」という判断があり得る**からです。
    > **重要なのは「知らずに文字列にした」ではなく「比較したうえで選んだ」と説明できること**です。これは実務のレビューで必ず問われます。
 2. JDBC で Java から接続し、社員1件を取得するコードを書く（プレースホルダ必須）
-   - `week1` の Maven プロジェクトに PostgreSQL ドライバ（`org.postgresql:postgresql:42.7.3`）を追加し、
+   - `week1` の Maven プロジェクトに PostgreSQL ドライバ（`org.postgresql:postgresql:42.7.13`）を追加し、
      `DriverManager.getConnection("jdbc:postgresql://localhost:5432/attendance", "appuser", "localdevonly")` で接続します
    - **接続は必ず try-with-resources で開く**（Day 6 の内容。閉じ忘れは資源枯渇に直結します）
 3. `week2/schema.sql` と `week2/sample-data.sql` をリポジトリに追加してコミット
@@ -247,7 +247,7 @@ for (Employee e : employees) {
 - [ ] UPDATE/DELETE 実行前にやるべきことを説明できる
 - [ ] **`docker compose up -d` / `down` / `down -v` の違いを説明できる**
 - [ ] **開発と本番で違うDB製品を使うと何が起きるか説明できる**
-- [ ] **イメージのバージョンを固定する理由（`postgres:16` と `postgres:latest`）を説明できる**
+- [ ] **イメージのバージョンを固定する理由（`postgres:18` と `postgres:latest`）を説明できる**
 
 ---
 
@@ -1694,7 +1694,7 @@ class AttendanceRepositoryTest {
 
     @Container
     @ServiceConnection                        // 接続情報をSpringに自動で渡す
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16");
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:18");
 
     @Autowired AttendanceRepository repository;
     @Autowired EmployeeRepository employeeRepository;
@@ -1763,7 +1763,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 ```
 
 **動きの理解（ここが大事）**
-1. テストクラスの読み込み時に `PostgreSQLContainer` が Docker で `postgres:16` を起動する
+1. テストクラスの読み込み時に `PostgreSQLContainer` が Docker で `postgres:18` を起動する
 2. `@ServiceConnection` が、**その都度変わる接続URL・ポート・パスワードを Spring に自動で渡す**（この仕組みが無かった頃は `@DynamicPropertySource` で手書きしていました）
 3. **Flyway が自動で走り、`V1__*.sql` からテーブルが作られる**（＝本番と同じ手順でスキーマが再現される）
 4. テストが終わるとコンテナは破棄される
@@ -1786,7 +1786,7 @@ class AttendanceIntegrationTest {
 
     @Container
     @ServiceConnection
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16");
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:18");
 
     @Autowired MockMvc mockMvc;
 
