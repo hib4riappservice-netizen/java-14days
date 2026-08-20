@@ -369,6 +369,7 @@ s.contains("Taro")      // 含むか
 s.split(" ")            // 区切って配列にする
 s.substring(2, 6)       // 一部を取り出す
 String.format("%s は %d 歳", "田中", 25)   // 整形
+String.join(",", "田中", "佐藤", "鈴木")     // "田中,佐藤,鈴木"（配列やListを区切り文字でつなぐ。splitの逆）
 ```
 
 ### 【最重要】スタックトレースの読み方
@@ -587,6 +588,15 @@ taro.changeDepartment("開発部");
 
 - `new Employee(...)` で **インスタンス（実体）** が作られます
 - クラス＝たい焼きの型、インスタンス＝焼けたたい焼き。型は1つ、たい焼きは何個でも作れます
+
+> **`Objects.requireNonNull` — null チェックだけでよいときの短縮形**
+> 上のコンストラクタは `if (x == null || x.isBlank())` と書いています。**業務の文字列は「null」と「空文字」の両方を弾きたいことが多い**ので、これが基本形です。
+> 一方、**空文字を気にしなくてよい型**（`Department` オブジェクトや `LocalDate` など）では、`null` だけ弾ければ十分です。そのときは以下のように短く書けます。
+> ```java
+> this.department = Objects.requireNonNull(department, "部署は必須です");
+> // ↑ null なら NullPointerException（メッセージ付き）を投げ、null でなければそのまま代入して返す
+> ```
+> **使い分け**：文字列で空文字も弾きたい → 自分で `if` を書く。**null かどうかだけ**でよい → `Objects.requireNonNull` の方が短くて読みやすい。
 
 ### カプセル化：なぜフィールドを private にするのか
 
@@ -974,7 +984,7 @@ for (OvertimePayCalculator c : calculators) {
 - Optional で NullPointerException を防げる
 
 ## ② 新出用語
-コレクション / List / ArrayList / Map / HashMap / Set / HashSet / ジェネリクス / equals / hashCode / Optional / ラムダ式 / Stream / filter / map / collect / var（型推論） / テキストブロック
+コレクション / List / ArrayList / Map / HashMap / Set / HashSet / ジェネリクス / equals / hashCode / Optional / ラムダ式 / Stream / filter / map / collect / forEach / var（型推論） / テキストブロック
 
 ## ③ 座学（150分）
 
@@ -988,6 +998,7 @@ names.size();            // 2
 names.contains("佐藤");   // true
 names.remove("田中");
 for (String n : names) { System.out.println(n); }
+names.forEach(n -> System.out.println(n));  // ↑と同じ意味。この `n -> ...` の書き方は「ラムダ式」といい、このあと本節後半で詳しく学ぶ
 
 // 変更不可なリストを作る（実務で多用）
 List<String> fixed = List.of("月", "火", "水");
@@ -1151,11 +1162,18 @@ Map<String, Integer> totalByEmployee = records.stream()
 List<Attendance> sorted = records.stream()
     .sorted(Comparator.comparingInt(Attendance::getWorkHours).reversed())
     .toList();
+
+// ⑥ 1件ずつ処理する（結果を作らず、表示だけしたいとき）
+records.stream()
+    .filter(a -> a.isOvertimeDay())
+    .forEach(a -> System.out.println(a.getEmployeeId() + "は残業あり"));
 ```
 
 `Attendance::getEmployeeId` は **メソッド参照** といい、`a -> a.getEmployeeId()` の短縮形です。
 
 > **Streamの読み方**：`.stream()` で「流れ」を作り、`.filter()` `.map()` で加工し、`.toList()` `.collect()` `.sum()` で **最後に必ず取り出す**。取り出さないと何も実行されません（遅延評価）。
+>
+> **`forEach` は他の終端操作と役割が違います。** `toList()` `collect()` `sum()` は「**新しい値を作って返す**」ためのものですが、`forEach` は「**1件ずつ処理して、値は返さない**」ためのものです。**画面表示・ログ出力など「副作用」が目的のときだけ使ってください。** データを作りたいときに `forEach` の中で `list.add(...)` するのはアンチパターンです（`map`/`collect` を使うべき場面です）。
 >
 > **【実務の注意】Streamを何段もネストして書かないでください。** 3〜4段を超えたら、for文の方が読みやすいことが多いです。**「短く書く」ことより「読んで分かる」ことが優先**です。これはレビューでよく指摘されます。
 
