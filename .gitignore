@@ -21,3 +21,5 @@ application-local.yml
 # ログ（毎回変わるうえ、個人情報が入りうる）
 *.log
 logs/
+# エディタ個人設定
+.obsidian/
