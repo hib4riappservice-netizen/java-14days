@@ -5,6 +5,27 @@
 
 ---
 
+## 今日やることの全体像（まずここだけ見れば流れが分かります）
+
+**Day 0 に実行するのは §0〜§4-3 と §6・§7 です。** §5（Docker/PostgreSQL）は Day 8 まで、フォルダ構成（§8）は「読んで把握するだけ」の参考資料です。各項目の詳しい手順・つまずいたときの対処は、対応する節に書いてあります。
+
+| # | やること | 完了の合図（確認コマンド） |
+|---|---|---|
+| §0 | 前に入れたものが無いか確認・更新 | `java -version` 等が正しく表示される |
+| §1 | JDK 21 をインストール | `java -version` が 21 |
+| §2 | IntelliJ IDEA をインストール | 起動して画面が開く |
+| §3 | Git をインストール＋名前とメールを設定 | `git --version` |
+| §4 | GitHub アカウント作成＋リポジトリをクローン | `pwd` が `/c/java-14days` |
+| §4-2 | `.gitignore` `.gitattributes` を作り、最初の push | GitHubのブラウザ画面でファイルが見える |
+| §4-3 | `week1` を Maven プロジェクト化（Day 1 前に必須） | `mvn clean test` が BUILD SUCCESS |
+| §6 | curl または Postman を用意（Day 9 で使用） | `curl.exe --version` |
+| §7 | 全部まとめて最終確認 | チェックリストが全部✅ |
+| §5 | **（Day 8 まで不要）** Docker Desktop＋PostgreSQL | `docker run --rm hello-world` |
+
+**この後、毎日使うことになる Git・Maven・Docker・psql のコマンドは、このファイルではなく `13_daily-commands.md` にまとめてあります。** ここ（`04_setup.md`）はあくまで「最初に1回だけ通る」ためのファイルです。
+
+---
+
 ## 用語の前提
 
 - **ターミナル**：コマンドを打つ黒い画面。**Windowsは「Git Bash」（§3 で Git と一緒に入ります）、Macは「ターミナル.app」を使ってください**
@@ -374,50 +395,9 @@ git push origin main
 
 ## 4-2-2. 【Day 1 以降、毎日やる】更新したファイルをコミット・push する
 
-**2回目以降も手順は同じです。** 毎日の学習の終わりに、その日の成果を必ず GitHub に上げてください。
+**Day 1 からは、毎日この作業が発生します。** 手順（コミットの型、`git add -p` の使い方、巻き戻し方まで）は **`13_daily-commands.md`** に一本化しました。ブックマークして、これから毎日そちらを開いてください。
 
-```bash
-cd /c/java-14days      # まずリポジトリのルートへ（どこにいるか分からなくなったら pwd）
-
-git status             # ① 何が変わったかを見る（毎回必ず見る）
-git add week1/src/main/java/EmployeeInfo.java log/day01.md   # ② 載せるファイルを選ぶ
-git commit -m "feat: Day 1 の給与明細プログラムを追加"          # ③ 履歴に刻む
-git push origin main   # ④ GitHub へ送る
-```
-
-**`git status` の読み方**（ここが読めれば迷いません）
-
-- `Changes to be committed:` … `git add` 済み。**次の `commit` に載る**
-- `Changes not staged for commit:` … 変更したが `add` していない。**このままでは載らない**
-- `Untracked files:` … Gitがまだ知らない新規ファイル。**`add` しないと永久に載らない**
-
-**変更したファイルが多くて選ぶのが面倒なとき**
-```bash
-git add -A             # 変更・追加・削除をまとめて載せる
-git status             # ⚠ 載せた後に必ず確認する。意図しないファイルが混ざっていないか
-```
-> **`git add -A` は便利ですが、`.gitignore` の設定が甘いと不要なファイルまで載ります。** 必ず `git status` で中身を確認してから `commit` してください。
-
-**コミットメッセージの型**（Day 7 で詳しくやります。今はこの3つで十分）
-
-- `feat:` … 機能を追加した（例：`feat: Day 2 の勤怠集計を追加`）
-- `fix:` … 間違いを直した（例：`fix: 空配列で落ちる不具合を修正`）
-- `docs:` … 文書だけ変えた（例：`docs: Day 3 の学習ログを追記`）
-
-**1日の終わりの定型（これを毎日繰り返す）**
-```bash
-cd /c/java-14days
-git status
-git add -A
-git status                                   # 中身を確認してから
-git commit -m "feat: Day X の課題を実装"
-git push origin main
-```
-
-> **なぜ毎日 push するのか。** PCが壊れても成果が残る、というだけではありません。
-> **「毎日コミットが刻まれた履歴」そのものが、面接で見せられる証拠**になります。14日間の学習の軌跡が GitHub に残ります。
->
-> **⚠ Day 7 でブランチ保護を設定すると、`main` への直接 push はできなくなります。** それ以降は「ブランチを切る → PR → マージ」に切り替わります（Day 7 で扱います）。**Day 1〜6 の間は、上の手順で `main` に直接 push して構いません。**
+> **⚠ Day 7 でブランチ保護を設定すると、`main` への直接 push はできなくなります。** それ以降は「ブランチを切る → PR → マージ」に切り替わります（`13_daily-commands.md` §3、および Day 7 の本文）。**Day 1〜6 の間は、`main` に直接 push して構いません。**
 
 ---
 
@@ -548,6 +528,8 @@ mvn clean test    # BUILD SUCCESS が出れば準備完了（テストが0件で
 ```
 
 > **`mvn` コマンドが見つからない場合**：IntelliJ の右端「Maven」パネルからも同じ操作（clean / test）ができます。コマンドを入れたい場合は https://maven.apache.org/download.cgi から入れて PATH を通してください。**本教材はどちらでも進められます。**
+>
+> **これ以降、`mvn` はほぼ毎日使います。** よく使うコマンドの一覧は `13_daily-commands.md` §4 にまとめました。
 
 ---
 
@@ -614,17 +596,14 @@ volumes:
   attendance-db-data:
 ```
 
-**起動・停止**
+**起動して、動くことだけ確認します。**
 ```bash
 docker compose up -d      # 起動（初回はイメージのダウンロードで数分）
 docker compose ps         # 状態確認。STATUS が healthy になればOK
-docker compose logs db    # 起動に失敗したときはログを見る
-docker compose stop       # 停止（データは残る）
-docker compose down       # 停止して箱を削除（データは volume に残る）
-docker compose down -v    # ⚠ volume ごと削除＝データ全消去。作り直したいときだけ
 ```
-
-> **`image: postgres:16` のようにバージョンを固定してください。** `postgres:latest` にすると、ある日勝手にメジャーバージョンが上がって動かなくなります。**「本番と同じバージョンを固定する」のが実務の鉄則**です。
+> **`image: postgres:18` のようにバージョンを固定してください。** `postgres:latest` にすると、ある日勝手にメジャーバージョンが上がって動かなくなります。**「本番と同じバージョンを固定する」のが実務の鉄則**です。
+>
+> **停止・再起動など、これ以降毎日使うコマンドは `13_daily-commands.md` §5 にまとめました。**
 
 ### 5-3. SQL を打つ（Day 8 で使用）
 
@@ -634,33 +613,7 @@ docker compose exec db psql -U appuser -d attendance
 # ⚠ Git Bash で画面が固まる / "the input device is not a TTY" と出たら、頭に winpty を付ける
 winpty docker compose exec db psql -U appuser -d attendance
 ```
-接続できたら psql の基本操作はこれだけ覚えれば十分です。
-
-- `\dt` … テーブル一覧
-- `\d employees` … テーブル定義を見る
-- `\l` … データベース一覧
-- `\q` … 終了
-- `\i /path/file.sql` … SQLファイルを流し込む
-
-ファイルに書いた SQL をまとめて流すときは、ホスト側から渡せます。
-```bash
-# Mac / Linux / Git Bash
-docker compose exec -T db psql -U appuser -d attendance < week2/schema.sql
-```
-```powershell
-# Windows PowerShell（`<` は使えないので Get-Content から渡す）
-Get-Content week2/schema.sql | docker compose exec -T db psql -U appuser -d attendance
-```
-
-> **⚠ Windows の人へ：本教材のコマンド例は、断りがなければ Mac / Linux（bash）の書き方です。**
-> PowerShell では以下が**そのままでは動きません**。詰まったら `07_troubleshooting.md`「8. Windows（PowerShell）でコマンド例が動かない」を見てください。
->
-> - `cmd < file` → `Get-Content file | cmd`
-> - `cmd1 && cmd2` → `cmd1; cmd2`（Windows PowerShell 5.1 は `&&` に非対応）
-> - 行末の `\` で改行を続ける → バッククォートを使うか、**1行で書く**（こちらが安全）
-> - `curl` → **`curl.exe`**（`curl` だけだと別コマンドの別名になります）
->
-> **確実なのは、Git のインストール時に一緒に入る「Git Bash」を使うこと**です。教材のコマンドをそのまま貼れます。**本教材では Git Bash を推奨します。**
+接続できることを確認してください。**`\dt` などの基本操作、ファイルからSQLを流し込む方法、bash↔PowerShellの変換表は `13_daily-commands.md` §6・§7 にまとめました。**
 
 （GUIが好みなら **pgAdmin** や **DBeaver**（無料）を使っても構いません。IntelliJ のデータベース機能は無料で使える範囲が変わることがあるため、本教材では `psql` に統一しています）
 

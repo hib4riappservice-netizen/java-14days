@@ -29,7 +29,7 @@
 | 01 | `01_glossary.md` | 用語辞典（248項目） | **分からない語が出るたび** |
 | 02 | `02_curriculum-week1.md` | カリキュラム 第1週（Day 0〜7） | 該当日に |
 | 03 | `03_curriculum-week2.md` | カリキュラム 第2週（Day 8〜14） | 該当日に |
-| 04 | `04_setup.md` | 環境構築手順（Git の push 手順・Maven プロジェクト作成・DB準備を含む） | Day 0（Day 3・6・8 でも参照） |
+| 04 | `04_setup.md` | 環境構築手順（インストールと最初の1回だけの設定） | Day 0（Day 3・8 でも参照） |
 | 05 | `05_project-spec.md` | 総合課題・勤怠管理API仕様 | Day 1 に一読、Day 9 以降は毎日 |
 | 06 | `06_roadmap-6months.md` | 15日目以降・6ヶ月ロードマップ | Day 14 の夜 |
 | 07 | `07_troubleshooting.md` | つまずいたとき集 | エラーが出たとき |
@@ -38,6 +38,7 @@
 | 10 | `10_review-log.md` | 教材レビュー記録 | 品質検証の記録 |
 | 11 | `11_conversation-log.md` | 会話記録 | 制作の経緯 |
 | 12 | `12_design-decisions.md` | 作業記録・設計判断 | 設計判断と検証ログ |
+| 13 | `13_daily-commands.md` | 毎日使うコマンド早見表（Git・Maven・Docker・psql） | **Day 1 以降、毎日** |
 
 ---
 
@@ -97,7 +98,7 @@
 | テスト用DB | Testcontainers（テスト時に本物のDBを使い捨て起動） | Day 13 |
 | CI | GitHub Actions ＋ `main` のブランチ保護 | Day 7・13 |
 
-セットアップ手順は `04_setup.md` にあります。**Git の add / commit / push の手順、Maven プロジェクトの作り方、Day 8 用の PostgreSQL の準備も同ファイルに載っています。**
+セットアップ手順は `04_setup.md` にあります（インストールと最初の1回だけの設定）。**Git・Maven・Docker・psql の、毎日使うコマンドは `13_daily-commands.md` にまとめてあります。** 迷ったら「初回だけ→04、毎日→13」と覚えてください。
 
 ---
 
