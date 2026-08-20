@@ -312,3 +312,11 @@
 | switch 式 | `case A -> 値;` の形で**値を返せる** switch（Java 14以降）。`break` 不要で、書き漏らしをコンパイラが検出できる |
 | テキストブロック | `"""` で囲む複数行の文字列（Java 15以降）。JSONやSQLをエスケープなしで書ける |
 | 型推論 | 右辺から変数の型をコンパイラが判断する仕組み。`var` がこれにあたる。**型が消えるわけではない** |
+| `@Valid` | **リクエストボディ（JSON）**の中身を検証させる印。Controller の引数に付ける。付け忘れると検証が丸ごと素通りする |
+| `@Validated` | Spring 独自の検証アノテーション。**Spring Framework 6.1（Boot 3.2）以降、Controller クラスには付けない**（付けると組み込みのメソッド検証が無効化され、飛ぶ例外が変わる） |
+| `@RestControllerAdvice` | 全Controllerで発生した例外を1箇所でまとめて処理する仕組み。エラーレスポンスの統一に使う |
+| `@ExceptionHandler` | 「この例外が来たらこう返す」を定義するアノテーション。`@RestControllerAdvice` の中に書く |
+| `ddl-auto` | JPA がテーブル定義をどう扱うかの設定。`validate`（検証のみ／本番はこれ）／`update`・`create-drop`（自動変更・再作成。**本番禁止**） |
+| `@MockitoBean` | テストで Bean をモックに差し替えるアノテーション（Spring Boot 3.4以降）。旧 `@MockBean` の後継 |
+| 改行コード（CRLF / LF） | 行の終わりを表す不可視文字。Windowsは `CRLF`(`\r\n`)、Mac/Linuxは `LF`(`\n`)。混在すると差分が汚れ、**Linux上でシェルスクリプトが動かなくなる** |
+| `.gitattributes` | リポジトリ側で改行コードなどの扱いを固定する設定ファイル。各自の Git 設定より優先される |

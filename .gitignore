@@ -9,7 +9,6 @@ build/
 .idea/
 *.iml
 .vscode/
-.obsidian/
 
 # OS
 .DS_Store

@@ -18,6 +18,101 @@
 
 ---
 
+## 0. すでにインストール済みのものがある場合（先に読んでください）
+
+**「前に入れた気がする」ものは、まず現状を確認してください。** 古いバージョンが残っていると、あとで原因の分かりにくいトラブルになります。
+
+### 0-1. 今の状態を確認する
+
+Git Bash で以下をまとめて実行します。**エラーが出る＝未インストール**です（この後の章で入れます）。
+```bash
+java -version        # 21 で始まっていればOK
+javac -version       # 同上
+git --version        # 2.40 以上が望ましい
+docker --version     # 29.x 前後
+psql --version       # ⚠ ここに何か表示されたら 0-5 を必ず読むこと
+mvn -v               # 出なくてOK（IntelliJ 同梱のものを使うため）
+```
+
+### 0-2. Windows での更新は `winget` が最短
+
+Windows には `winget` というパッケージ管理コマンドが標準で入っています（Git Bash からも使えます）。
+```bash
+winget list                                    # 入っているものを一覧表示
+winget upgrade                                 # 更新できるものを一覧表示
+winget upgrade --id Git.Git                    # Git を更新
+winget upgrade --id EclipseAdoptium.Temurin.21.JDK
+winget upgrade --id Docker.DockerDesktop
+winget upgrade --id JetBrains.IntelliJIDEA.Community
+```
+> **Mac は `brew upgrade <名前>`** で同じことができます（`brew outdated` で更新可能なものを一覧表示）。
+
+### 0-3. JDK が 21 以外だった場合
+
+**古い JDK を削除する必要はありません。** Java は複数バージョンを共存させられます。**21 を追加で入れて、使う側で切り替える**のが実務の作法です（現場では案件ごとにバージョンが違います）。
+
+- **IntelliJ で使うJDK** … `File` → `Project Structure` → `Project` → `SDK` で **21** を選ぶ。**これが本教材で最も重要**です
+- **ターミナルで使うJDK** … `JAVA_HOME` を 21 のパスに設定する（Windowsは「環境変数の編集」から）
+- 確認：`java -version` が 21 を返すこと。返さない場合は PATH に古い JDK の `bin` が先に並んでいます
+
+### 0-4. IntelliJ / Docker Desktop の更新
+
+- **IntelliJ**：`Help` → `Check for Updates` から更新できます（複数バージョンを管理したいなら **JetBrains Toolbox App** が便利）
+- **Docker Desktop**：アプリ右上の歯車 → `Software updates`、またはクジラアイコンのメニューから更新
+- **⚠ Docker Desktop は更新後に必ず再起動**してください。起動しきる前に `docker` コマンドを打つとエラーになります
+
+### 0-5. 【重要】PostgreSQL がすでに入っている場合
+
+**本教材では PostgreSQL を Docker で動かします。** PCに直接インストールされた PostgreSQL があると、**5432番ポートの取り合いになり、`docker compose up -d` が失敗します**（`port is already allocated`）。
+
+**まず確認してください**（PowerShell で実行）
+```powershell
+Get-Service -Name "postgresql*"                              # サービスとして動いていないか
+Get-NetTCPConnection -LocalPort 5432 -State Listen           # 5432 が使われていないか
+```
+
+何か表示されたら、**次の3つから選んでください。**
+
+**方法A：既存のPostgreSQLサービスを止める（推奨）**
+```powershell
+# 管理者権限のPowerShellで実行
+Stop-Service postgresql-x64-15                    # サービス名は上のコマンドで確認した名前
+Set-Service postgresql-x64-15 -StartupType Manual # PC起動時に自動で立ち上がらないようにする
+```
+> **アンインストールは不要です。** 別の用途で使うかもしれないので、**止めるだけ**にしておきます。使いたくなったら `Start-Service` で戻せます。
+
+**止めた後、5432番が本当に空いたか確認します。**
+```powershell
+Get-NetTCPConnection -LocalPort 5432 -State Listen -ErrorAction SilentlyContinue
+```
+**何も表示されなければ成功です。** これで Day 8 の `docker compose up -d` の準備が整いました。
+（`psql --version` はクライアントソフトの有無を見るだけなので、サービスを止めても表示され続けます。**それは正常**で、エラーではありません）
+
+> **⚠ この時点で `docker compose exec db psql ...` を試すと `no configuration file provided: not found` になります。** `compose.yaml` はまだ存在しないためで、**正常な動作**です。`compose.yaml` を作るのは Day 8（§5-2）です。ここでは「ポートが空いたこと」の確認だけで十分です。
+
+**方法B：Docker側のポートをずらす**
+`compose.yaml`（§5-2）の左側の数字を変え、接続URLも合わせます。
+```yaml
+    ports:
+      - "5433:5432"     # PC側の5433 → コンテナ内の5432
+```
+この場合、以降の接続先はすべて `jdbc:postgresql://localhost:5433/attendance` になります。**教材のURLを読み替える手間が続く**ので、方法Aを推奨します。
+
+**方法C：既存のPostgreSQLをそのまま使う（Docker を使わない）**
+§5-5 の手順で `attendance` DB と `appuser` を作れば進められます。ただし **Day 13 の Testcontainers は Docker が必須**です。
+
+### 0-6. `psql` コマンドのバージョンが古い場合
+
+`psql --version` が 16 未満でも、**Day 8 の学習には支障ありません**（接続してSQLを打つだけなら古いクライアントでも動きます）。
+
+ただし本教材では、**混乱を避けるためコンテナの中の `psql` を使います**。
+```bash
+docker compose exec db psql -U appuser -d attendance     # コンテナ内の psql（サーバと必ず同じ版）
+```
+> **クライアントとサーバでバージョンが違うと、`pg_dump` などが「version mismatch」で失敗します。** 実務でもよくあるつまずきなので、**「サーバと同じ版のクライアントを使う」**と覚えてください。
+
+---
+
 ## 1. JDK 21（LTS）のインストール
 
 **LTS＝長期サポート版。実務ではLTSを使います。** 2026年8月現在、Java 21 と Java 25 が主要なLTSです。本教材は **Java 21** を前提とします（実務での採用が最も多いため）。
@@ -56,14 +151,23 @@ javac -version
 
 ---
 
-## 2. IntelliJ IDEA Community Edition のインストール
+## 2. IntelliJ IDEA のインストール
 
 **IDE＝統合開発環境。** エディタ・コンパイラ・デバッガが全部入った開発ソフトです。
-Community Edition は**無料**です。Ultimate（有料）はSpring支援機能が強力ですが、Communityでも本教材は全て実施できます。
+
+> **⚠ 2025.3 から、IntelliJ IDEA は「1つのインストーラ」に統合されました。**
+> 以前は「Community Edition（無料）」と「Ultimate（有料）」が別々にダウンロードできましたが、**現在その区別はありません**。古い記事の「ページ下部から Community Edition を選ぶ」という手順は、もう存在しません。
 
 1. https://www.jetbrains.com/idea/download/ を開く
-2. ページ下部の **Community Edition** をダウンロード（上部のUltimateではありません）
-3. インストールして起動
+2. **Windows** を選び、ダウンロードして実行（インストール中の選択肢はすべて既定のままでOK）
+3. 起動すると **30日間の無料トライアル**（Ultimate相当の全機能）が始まります
+4. **トライアルが切れても、Java / Kotlin 開発の基本機能は無料で使い続けられます。** 購入は不要です
+
+**本教材で使う機能が有料かどうか**
+
+- **すべて無料の範囲で完結します。** エディタ、コンパイル、実行、デバッガ、Git連携、Maven、JUnit の実行はすべて無料機能です
+- トライアル終了後に一部の機能（高度なフレームワーク支援など）が使えなくなりますが、**本教材の進行には一切影響しません**
+- DBの操作は、本教材では **`psql`（コマンド）で統一**します。IDEのデータベース機能の無料範囲は変更されることがあるため、**どのエディションでも同じ手順で進められるようにしています**
 
 ### 最初にやる設定（重要）
 - `File` → `Settings`（Macは `IntelliJ IDEA` → `Settings`）
@@ -118,14 +222,34 @@ git config --global init.defaultBranch main
 3. Repository name: `java-14days`、**Public**、`Add a README file` にチェック → Create
 
 ### PCに持ってくる（クローン）
+
+**Git Bash を開いて、以下を実行します。**
 ```bash
-cd ~/           # 好きな作業フォルダへ移動（日本語や空白を含まないパスにすること）
+cd /c                                                        # C:\ に移動する
 git clone https://github.com/<あなたのアカウント>/java-14days.git
-cd java-14days
+cd /c/java-14days                                            # 作られたフォルダに入る
+pwd                                                          # /c/java-14days と表示されればOK
 ```
 
+> **⚠ Git Bash のパスの書き方は Windows と違います。** ここを間違えると `cd: No such file or directory` になります。
+>
+> - `C:\java-14days` → **`/c/java-14days`**（`C:` は `/c`、区切りは `/`）
+> - `C:\Users\あなた` → **`~`**（ホームフォルダを表す記号）
+>
+> **`cd java-14days` のように短く書けるのは「1つ上のフォルダにいるとき」だけ**です。
+> どこにいるか分からなくなったら `pwd` で現在地を確認し、**`cd /c/java-14days` とフルパスで指定**すれば必ず戻れます。
+>
+> **なぜ `C:\` の直下に置くのか**：パスに**日本語・空白を含めない**ためです。`C:\Users\山田 太郎\Documents\...` のような場所に置くと、Java・Maven・Docker で文字コード起因のトラブルが起きます。
+
 ### 認証について
-`git push` すると認証を求められます。**GitHubのログインパスワードでは通りません**（2021年に廃止）。
+
+`git push` すると認証を求められます。**出方が2通りある**ので、画面を見て分岐してください。
+
+**① ブラウザで GitHub のサインイン画面が開いた場合（多数派）**
+そのままログインすれば完了です。Git に同梱の Credential Manager が処理してくれるので、**トークンの作成は不要**です。
+
+**② ターミナルに `Username` / `Password` の入力を求められた場合**
+**GitHubのログインパスワードでは通りません**（2021年に廃止）。以下でトークンを作り、パスワード欄に貼り付けます。
 - GitHub → Settings → Developer settings → Personal access tokens → **Tokens (classic)** → Generate new token
 - スコープは `repo` にチェック
 - 生成されたトークンを**パスワード欄に貼り付ける**
@@ -247,6 +371,55 @@ git push origin main
 
 ---
 
+## 4-2-2. 【Day 1 以降、毎日やる】更新したファイルをコミット・push する
+
+**2回目以降も手順は同じです。** 毎日の学習の終わりに、その日の成果を必ず GitHub に上げてください。
+
+```bash
+cd /c/java-14days      # まずリポジトリのルートへ（どこにいるか分からなくなったら pwd）
+
+git status             # ① 何が変わったかを見る（毎回必ず見る）
+git add week1/src/main/java/EmployeeInfo.java log/day01.md   # ② 載せるファイルを選ぶ
+git commit -m "feat: Day 1 の給与明細プログラムを追加"          # ③ 履歴に刻む
+git push origin main   # ④ GitHub へ送る
+```
+
+**`git status` の読み方**（ここが読めれば迷いません）
+
+- `Changes to be committed:` … `git add` 済み。**次の `commit` に載る**
+- `Changes not staged for commit:` … 変更したが `add` していない。**このままでは載らない**
+- `Untracked files:` … Gitがまだ知らない新規ファイル。**`add` しないと永久に載らない**
+
+**変更したファイルが多くて選ぶのが面倒なとき**
+```bash
+git add -A             # 変更・追加・削除をまとめて載せる
+git status             # ⚠ 載せた後に必ず確認する。意図しないファイルが混ざっていないか
+```
+> **`git add -A` は便利ですが、`.gitignore` の設定が甘いと不要なファイルまで載ります。** 必ず `git status` で中身を確認してから `commit` してください。
+
+**コミットメッセージの型**（Day 7 で詳しくやります。今はこの3つで十分）
+
+- `feat:` … 機能を追加した（例：`feat: Day 2 の勤怠集計を追加`）
+- `fix:` … 間違いを直した（例：`fix: 空配列で落ちる不具合を修正`）
+- `docs:` … 文書だけ変えた（例：`docs: Day 3 の学習ログを追記`）
+
+**1日の終わりの定型（これを毎日繰り返す）**
+```bash
+cd /c/java-14days
+git status
+git add -A
+git status                                   # 中身を確認してから
+git commit -m "feat: Day X の課題を実装"
+git push origin main
+```
+
+> **なぜ毎日 push するのか。** PCが壊れても成果が残る、というだけではありません。
+> **「毎日コミットが刻まれた履歴」そのものが、面接で見せられる証拠**になります。14日間の学習の軌跡が GitHub に残ります。
+>
+> **⚠ Day 7 でブランチ保護を設定すると、`main` への直接 push はできなくなります。** それ以降は「ブランチを切る → PR → マージ」に切り替わります（Day 7 で扱います）。**Day 1〜6 の間は、上の手順で `main` に直接 push して構いません。**
+
+---
+
 ## 4-3. 【Day 1 の開始前に実施】Maven プロジェクトの作り方
 
 > **Day 3 でパッケージ（`package com.example...`）、Day 6 で外部ライブラリ（SLF4J）、Day 7 で `mvn test` を使います。** これらは Maven プロジェクトの形になっていないと動きません。
@@ -270,9 +443,12 @@ git push origin main
 > 作成直後に**タイトルバーのパスを必ず確認**してください。`week1\week1` になっていたら、IntelliJ を閉じてから1階層上げます。
 > ```bash
 > cd /c/java-14days/week1
-> mv week1/pom.xml week1/src week1/.mvn .
-> rm -rf week1 .idea      # .idea は再オープン時に自動生成される
+> mv week1/* . 2>/dev/null          # pom.xml と src を1階層上へ
+> mv week1/.[!.]* . 2>/dev/null     # .mvn などの隠しファイルも（無ければ何も起きません）
+> rm -rf week1 .idea                # .idea は再オープン時に自動生成される
+> ls -a                             # pom.xml と src が直下にあることを目で確認
 > ```
+> （`2>/dev/null` は「対象が無かったときのエラー表示を捨てる」指定です。IntelliJ のバージョンによっては `.mvn` が作られないため付けています）
 > そのうえで `File` → `Open` で `C:\java-14days\week1` を開き直します。
 
 生成される `week1/pom.xml` を、以下の形にしておきます（Day 6・Day 7 で使うものを最初から入れておく）。
@@ -298,25 +474,25 @@ git push origin main
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
-            <version>2.0.13</version>
+            <version>2.0.18</version>
         </dependency>
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
-            <version>1.5.6</version>
+            <version>1.6.3</version>
         </dependency>
 
         <!-- テスト（Day 7 で使用） -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
-            <version>5.10.2</version>
+            <version>6.1.3</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
-            <version>3.25.3</version>
+            <version>3.27.7</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -326,7 +502,7 @@ git push origin main
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.2.5</version>
+                <version>3.5.6</version>
             </plugin>
         </plugins>
     </build>
@@ -335,23 +511,19 @@ git push origin main
 
 ### できるフォルダ構成（これが Java の標準）
 
-| パス | 何を置くか |
-|---|---|
-| `week1/pom.xml` | 依存ライブラリの定義 |
-| `week1/src/main/java/` | **Day 0〜2** の練習（パッケージなしで置いてよい） |
-| `week1/src/main/java/com/example/attendance/` | **Day 3〜6** のクラス。`package` 宣言とこの階層を必ず一致させる |
-| `week1/src/test/java/com/example/attendance/` | **Day 7** のテストコード |
+- **`week1/pom.xml`** … 依存ライブラリの定義
+- **`week1/src/main/java/`** … Day 0〜2 の練習（パッケージなしで置いてよい）
+- **`week1/src/main/java/com/example/attendance/`** … Day 3〜6 のクラス。`package` 宣言とこの階層を必ず一致させる
+- **`week1/src/test/java/com/example/attendance/`** … Day 7 のテストコード
 
 > **⚠ `src/main/java` の外に置いた `.java` はビルド対象になりません。** 練習コードは必ずこの下に置いてください。
 
 > **【作成直後は `src/main/java` の中が空です。】** IntelliJ のプロジェクトビューでは、**空のフォルダには展開の三角（▶）が出ません**。「中が見られない＝失敗」ではないので安心してください。
-> フォルダの色で、正しく認識されているか確認できます。
 >
-> | 表示 | 意味 |
-> |---|---|
-> | `java` が**青** | ソースルート（本体コードを置く場所）として認識されている |
-> | `test/java` が**緑** | テストソースルートとして認識されている |
-> | `resources` に専用アイコン | リソースルートとして認識されている |
+> フォルダの色で、正しく認識されているか確認できます。
+> - `java` が**青** → ソースルート（本体コードを置く場所）として認識されている
+> - `test/java` が**緑** → テストソースルートとして認識されている
+> - `resources` に専用アイコン → リソースルートとして認識されている
 >
 > 色が付いていない場合は、フォルダを右クリック → `Mark Directory as` → `Sources Root` / `Test Sources Root` で指定できます。
 
@@ -406,7 +578,7 @@ brew install --cask docker      # 起動は Launchpad から Docker.app
 
 **確認**
 ```bash
-docker --version          # Docker version 27.x など
+docker --version          # Docker version 29.x など（数字が違っても、エラーにならなければOK）
 docker compose version    # Docker Compose version v2.x など
 docker run --rm hello-world   # "Hello from Docker!" が出れば成功
 ```
@@ -463,13 +635,11 @@ winpty docker compose exec db psql -U appuser -d attendance
 ```
 接続できたら psql の基本操作はこれだけ覚えれば十分です。
 
-| コマンド | 意味 |
-|---|---|
-| `\dt` | テーブル一覧 |
-| `\d employees` | テーブル定義を見る |
-| `\l` | データベース一覧 |
-| `\q` | 終了 |
-| `\i /path/file.sql` | SQLファイルを流し込む |
+- `\dt` … テーブル一覧
+- `\d employees` … テーブル定義を見る
+- `\l` … データベース一覧
+- `\q` … 終了
+- `\i /path/file.sql` … SQLファイルを流し込む
 
 ファイルに書いた SQL をまとめて流すときは、ホスト側から渡せます。
 ```bash
@@ -482,18 +652,16 @@ Get-Content week2/schema.sql | docker compose exec -T db psql -U appuser -d atte
 ```
 
 > **⚠ Windows の人へ：本教材のコマンド例は、断りがなければ Mac / Linux（bash）の書き方です。**
-> PowerShell では以下が**そのままでは動きません**。詰まったら `07_troubleshooting.md`「9. Windows（PowerShell）でコマンド例が動かない」を見てください。
+> PowerShell では以下が**そのままでは動きません**。詰まったら `07_troubleshooting.md`「8. Windows（PowerShell）でコマンド例が動かない」を見てください。
 >
-> | bash の書き方 | PowerShell での書き方 |
-> |---|---|
-> | `cmd < file` | `Get-Content file \| cmd` |
-> | `cmd1 && cmd2` | `cmd1; cmd2`（Windows PowerShell 5.1 は `&&` 非対応） |
-> | 行末の `\` で改行を続ける | 行末のバッククォート `` ` ``。**または1行で書く**（こちらが安全） |
-> | `curl` | `curl.exe`（`curl` だけだと別コマンドの別名になります） |
+> - `cmd < file` → `Get-Content file | cmd`
+> - `cmd1 && cmd2` → `cmd1; cmd2`（Windows PowerShell 5.1 は `&&` に非対応）
+> - 行末の `\` で改行を続ける → バッククォートを使うか、**1行で書く**（こちらが安全）
+> - `curl` → **`curl.exe`**（`curl` だけだと別コマンドの別名になります）
 >
 > **確実なのは、Git のインストール時に一緒に入る「Git Bash」を使うこと**です。教材のコマンドをそのまま貼れます。**本教材では Git Bash を推奨します。**
 
-（GUIが好みなら **pgAdmin** や **DBeaver** を使っても構いません。IntelliJ の Database ツールは **Ultimate 限定**で、Community Edition では使えません）
+（GUIが好みなら **pgAdmin** や **DBeaver**（無料）を使っても構いません。IntelliJ のデータベース機能は無料で使える範囲が変わることがあるため、本教材では `psql` に統一しています）
 
 ### 5-4. Java から繋ぐときの情報
 
@@ -502,16 +670,16 @@ Maven の依存（Day 8 の JDBC 課題で使用。Day 9 以降は Spring Initia
 <dependency>
     <groupId>org.postgresql</groupId>
     <artifactId>postgresql</artifactId>
-    <version>42.7.3</version>
+    <version>42.7.13</version>
 </dependency>
 ```
 
-| 項目 | 値 |
-|---|---|
-| JDBC URL | `jdbc:postgresql://localhost:5432/attendance` |
-| ユーザー | `appuser` |
-| パスワード | `localdevonly`（**ローカル専用**） |
-| テスト用DB | **不要**。Day 13 で Testcontainers が使い捨てのDBを自動起動します |
+接続情報は以下で統一します。
+
+- **JDBC URL**：`jdbc:postgresql://localhost:5432/attendance`
+- **ユーザー**：`appuser`
+- **パスワード**：`localdevonly`（**ローカル専用**の値）
+- **テスト用DB**：不要（Day 13 で Testcontainers が使い捨てのDBを自動起動します）
 
 > **⚠ `localdevonly` は手元専用の値です。** 本番の接続情報は環境変数やシークレット管理から読みます（Day 11）。
 > **「ローカル用の値だからコミットしてよい」と「本番の値は絶対にコミットしない」の線引き**を、ここで覚えてください。実務でも `compose.yaml` はコミットし、本番の値は別管理です。
@@ -551,7 +719,7 @@ java -version            # 21.x.x
 javac -version           # 21.x.x
 git --version            # 2.x.x
 curl.exe --version       # 7.x or 8.x
-docker --version         # 27.x など（Day 8 以降で使用）
+docker --version         # 29.x など（数字は違っていてOK。Day 8 以降で使用）
 docker compose version   # v2.x など
 ```
 
@@ -572,18 +740,21 @@ public class Hello {
 - [ ] `.gitignore` があり、`git status` に `out/` や `.idea/` が出てこない（§4-2）
 - [ ] `week1` が Maven プロジェクトになっていて `mvn clean test` が BUILD SUCCESS（§4-3）
 - [ ] `docker run --rm hello-world` が成功する（§5-1）
+- [ ] **5432番ポートが空いている**（§0-5。`Get-NetTCPConnection -LocalPort 5432 -State Listen` で何も出ないこと）
 
 ---
 
 ## 8. 学習用フォルダ構成
 
-`java-14days` の直下に置くのは、**ファイル3つとフォルダ5つ**だけです。
+`java-14days` の直下に置くのは、**ファイル4つとフォルダ6つ**だけです。
 
 | 名前 | 種類 | 中身 | 使う日 |
 |---|---|---|---|
 | `README.md` | ファイル | リポジトリの説明（Day 14 で完成させる） | Day 14 |
 | `.gitignore` | ファイル | Gitに載せないものの一覧（§4-2） | Day 0 |
+| `.gitattributes` | ファイル | 改行コードをLFに固定（§4-2 ステップ0-2） | Day 0 |
 | `compose.yaml` | ファイル | ローカル用 PostgreSQL の定義（§5-2） | Day 8〜 |
+| `.github/workflows/` | フォルダ | CI の定義（`ci.yml`） | Day 13 |
 | `docs/` | フォルダ | **教材**（00〜12）。自分では書き換えない | 毎日 |
 | `log/` | フォルダ | 学習ログ `day00.md` 〜 `day14.md` | 毎日 |
 | `week1/` | フォルダ | Java の練習コード（Maven プロジェクト。§4-3） | Day 0〜7 |
@@ -592,33 +763,27 @@ public class Hello {
 
 ### `week1/` の中（§4-3 で作る Maven プロジェクト）
 
-| パス | 何を置くか |
-|---|---|
-| `week1/pom.xml` | 依存ライブラリの定義 |
-| `week1/src/main/java/` | Day 0〜2 の練習（パッケージなし） |
-| `week1/src/main/java/com/example/attendance/` | Day 3〜6 のクラス（`domain/` `service/` などに分ける） |
-| `week1/src/test/java/com/example/attendance/` | Day 7 のテストコード |
+- **`pom.xml`** … 依存ライブラリの定義
+- **`src/main/java/`** … Day 0〜2 の練習（パッケージなし）
+- **`src/main/java/com/example/attendance/`** … Day 3〜6 のクラス（`domain/` `service/` などに分ける）
+- **`src/test/java/com/example/attendance/`** … Day 7 のテストコード
 
 ### `attendance-api/` の中（Day 9 に Spring Initializr で生成）
 
-| パス | 何を置くか |
-|---|---|
-| `attendance-api/pom.xml` | 依存ライブラリの定義（自動生成） |
-| `attendance-api/src/main/java/...` | 本体のコード（構成は `05_project-spec.md` §5） |
-| `attendance-api/src/main/resources/` | `application.yml` と `db/migration/V1__*.sql`（Flyway） |
-| `attendance-api/src/test/` | テストコード（DB接続設定は不要。Testcontainers が自動起動する） |
-| `attendance-api/docs/` | **自分が書く設計書**（下表） |
+- **`pom.xml`** … 依存ライブラリの定義（自動生成される）
+- **`src/main/java/...`** … 本体のコード（構成は `05_project-spec.md` §5）
+- **`src/main/resources/`** … `application.yml` と `db/migration/V1__*.sql`（Flyway）
+- **`src/test/`** … テストコード（DB接続設定は不要。Testcontainers が自動起動する）
+- **`docs/`** … 自分が書く設計書（下記）
 
 ### `attendance-api/docs/` に自分で書くもの
 
-| ファイル | 内容 | 書く日 |
-|---|---|---|
-| `db-design.md` | テーブル設計とその理由 | Day 8 |
-| `api-log.md` | curl のリクエスト／レスポンス記録 | Day 9 |
-| `api-errors.md` | エラーコード一覧 | Day 11 |
-| `coding-standards.md` | 自分のコーディング規約 | Day 12 |
-| `design-ATT-30.md` | 月次集計APIの設計書 | Day 14 |
-| `decisions.md` | 決めたことと、その根拠 | Day 14 |
+- **`db-design.md`**（Day 8）… テーブル設計とその理由
+- **`api-log.md`**（Day 9）… curl のリクエスト／レスポンス記録
+- **`api-errors.md`**（Day 11）… エラーコード一覧
+- **`coding-standards.md`**（Day 12）… 自分のコーディング規約
+- **`design-ATT-30.md`**（Day 14）… 月次集計APIの設計書
+- **`decisions.md`**（Day 14）… 決めたことと、その根拠
 
 > **⚠ 教材の `docs/` と、自分が書く `attendance-api/docs/` を混ぜないでください。**
 > 各日の課題の「`attendance-api/docs/xxx.md` に書く」は、必ず後者を指します。

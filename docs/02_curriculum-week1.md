@@ -46,10 +46,13 @@ C言語などは、Windows用にコンパイルしたらWindowsでしか動き�
 ## ④ ハンズオン（180〜300分 ／ 大半はインストール待ち時間）
 `04_setup.md` に従って以下を完了させてください。
 
-> **最初に Docker Desktop（項目10）のダウンロードを開始してから、1〜9 を進めてください。** 待ち時間を重ねられます。
+> **⚠ まず `04_setup.md` の「0. すでにインストール済みのものがある場合」を実行してください。**
+> 以前に入れた JDK・Git・PostgreSQL などが残っていると、**あとで原因の分かりにくいトラブル**になります（特に PostgreSQL は Day 8 で確実に衝突します）。**5分で終わる確認**です。
+>
+> **その次に Docker Desktop（項目10）のダウンロードを開始してから、1〜9 を進めてください。** 待ち時間を重ねられます。
 
 1. **JDK 21（LTS）** をインストール → ターミナルで `java -version` が表示されればOK
-2. **IntelliJ IDEA Community Edition** をインストール
+2. **IntelliJ IDEA** をインストール（2025.3以降は無料版・有料版の区別なく1つのインストーラです）
 3. **Git** をインストール → `git --version` が表示されればOK
    - **Windows の人は、以降のコマンドを「Git Bash」で実行してください**（`04_setup.md`「用語の前提」）
 4. **GitHub アカウント**を作成
@@ -896,6 +899,10 @@ System.out.println(type.getLabel());                     // 正社員
 System.out.println(type.calculateOvertimePay(10));       // 25000
 ```
 
+> **⚠ この `calculateOvertimePay` は「enum に振る舞いを持たせられる」ことを示すための例です。**
+> **Day 10 以降、金額計算では使いません。** 実際の時給は社員ごとに違う（同じ正社員でも等級や昇給で変わる）ため、**計算にはDBの `employees.hourly_rate` を使います**（`05_project-spec.md` §3.3）。
+> enum が持つ金額は、**社員登録時の初期値の目安**という位置づけです。**「区分から金額を導出する」設計は、例外が1件出た瞬間に破綻します。**
+
 **enum を使う理由**：`String type = "REGULER";`（スペルミス）はコンパイルを通ってしまい、実行時にバグります。enum ならスペルミスは**コンパイルエラー**になります。**「間違いを実行前に見つける」というJavaの強みを最大限使う書き方です。**
 
 ### record（Java 16以降）— 定型コードを消す
@@ -937,9 +944,9 @@ for (OvertimePayCalculator c : calculators) {
 勤怠システムの「打刻種別」を設計する。
 
 1. `enum AttendanceType` を作る：`CLOCK_IN`（出勤）, `CLOCK_OUT`（退勤）, `BREAK_START`（休憩開始）, `BREAK_END`（休憩終了）。それぞれに日本語ラベルを持たせる
-2. `interface WorkTimeRule` を作る：`int calculateWorkMinutes(int clockInMinutes, int clockOutMinutes)`
+2. `interface WorkTimeRule` を作る：`int calculateWorkMinutes(LocalTime clockIn, LocalTime clockOut)`
 3. 実装を2つ作る
-   - `StandardWorkTimeRule` — 単純に退勤−出勤（休憩1時間を自動控除）
+   - `StandardWorkTimeRule` — 退勤−出勤から、**`05_project-spec.md` §3.2 の休憩ルール**（6時間以下:0分／8時間以下:45分／それ超:60分）で自動控除する
    - `FlexWorkTimeRule` — コアタイム（10:00〜15:00）を含まない場合は例外を投げる
 4. `record AttendanceRecord(String employeeId, LocalDate date, AttendanceType type, LocalTime time)` を作る
    （`LocalDate` / `LocalTime` は Day 6 で詳しくやります。今日は「日付と時刻の型」とだけ理解すればOK）
@@ -1323,7 +1330,7 @@ log.error("集計に失敗しました employeeId={}", employeeId, e);   // 異�
     <dependency>
         <groupId>org.slf4j</groupId>
         <artifactId>slf4j-api</artifactId>
-        <version>2.0.13</version>
+        <version>2.0.18</version>
     </dependency>
 </dependencies>
 ```
@@ -1342,12 +1349,12 @@ mvn package     # jar を作る
 <dependency>
     <groupId>org.slf4j</groupId>
     <artifactId>slf4j-api</artifactId>
-    <version>2.0.13</version>
+    <version>2.0.18</version>
 </dependency>
 <dependency>
     <groupId>ch.qos.logback</groupId>       <!-- 実際にログを出力する実装。これが無いと警告だけ出て何も記録されない -->
     <artifactId>logback-classic</artifactId>
-    <version>1.5.6</version>
+    <version>1.6.3</version>
 </dependency>
 ```
 > **SLF4J は「ログの共通インタフェース」で、実装（logback 等）とセットで初めて動きます。** これも Day 4 の「インタフェースと実装を分ける」の実例です。
@@ -1472,7 +1479,9 @@ GitHub → リポジトリの `Settings` → `Rules` → `Rulesets` → `New bra
 - **Require a pull request before merging** をON（＝直接 push を禁止）
   - **Required approvals は `0` にしてください。** **一人で学習していると、自分のPRを自分で承認できません。** 1以上のままだと**永久にマージできなくなります**（チーム開発では通常1以上にします）
 - **Require status checks to pass** をON（Day 13 で CI を作ったら、そのチェックを必須に指定）
-- **Bypass list に自分（Repository admin）を追加**しておく。一人運用で詰まったときの逃げ道です。**ただし現場では原則使いません**
+- **Bypass list には何も追加しないでください。** 「そもそも押せない」状態を体験するのが今日の目的です
+  - GitHub の Bypass は既定が **Always**（＝直接 push が通る）なので、**追加した時点でこの設定の意味が消えます**
+  - どうしても詰まったときは、Ruleset の画面で一時的に `Disabled` にして作業し、**必ず `Active` に戻してください**（どうしても追加する場合は、モードを **For pull requests only** にすること）
 
 **設定後は、マージを GitHub の PR 画面から行ってください。** ローカルで `git merge` して `git push origin main` はできなくなります（それが目的です）。
 
@@ -1484,7 +1493,7 @@ GitHub → リポジトリの `Settings` → `Rules` → `Rulesets` → `New bra
 > **なぜここまでするのか。** `main` は「いつでもリリースできる状態」でなければなりません。誰かが壊れたコードを直接 push すると、**その瞬間から全員の作業が壊れたコードの上に積み上がります**。
 > **「レビューを通す」「テストが緑」を人の善意ではなく仕組みで担保する** — これが現場の当たり前です。
 >
-> **Day 0 で `main` に直接 push したのは、リポジトリを作る最初の1回だけの例外です。** 今日からは自分のリポジトリでも、必ずブランチとPRを経由してください。
+> **Day 0〜6 で `main` に直接 push していたのは、ブランチ保護を掛ける前の学習用の運用です。** 今日この設定を入れた瞬間から、自分のリポジトリでも**必ずブランチとPRを経由**することになります。
 
 ### コミットメッセージの書き方（実務標準：Conventional Commits）
 ```
@@ -1599,12 +1608,13 @@ void 残業時間の境界値(int workHours, int expectedOvertime) {
 ```
 
 ### 何をテストすべきか（テストケースの作り方）
-| 観点 | 例（残業時間計算） |
-|---|---|
-| **正常系** | 10時間 → 残業2時間 |
-| **境界値** | 8時間ちょうど → 0、8.01時間 → 発生。**バグの大半は境界に潜みます** |
-| **異常系** | 負の時間、25時間、null |
-| **空・ゼロ件** | 勤怠データ0件のとき |
+
+残業時間の計算を例にすると、必ずこの4観点を書きます。
+
+- **正常系** … 10時間 → 残業2時間
+- **境界値** … 8時間ちょうど → 0分、8時間1分 → 1分。**バグの大半は境界に潜みます**
+- **異常系** … 負の時間、25時間、null
+- **空・ゼロ件** … 勤怠データが0件のとき
 
 > **境界値テストは、現場で最も価値が高いテストです。** 「8時間以上」なのか「8時間を超えたら」なのか、この1文字の違いが実際のバグになります。仕様書で「以上／超」「以下／未満」を見たら、必ず境界値テストを書いてください。
 
@@ -1614,13 +1624,13 @@ void 残業時間の境界値(int workHours, int expectedOvertime) {
 <dependency>
     <groupId>org.junit.jupiter</groupId>
     <artifactId>junit-jupiter</artifactId>
-    <version>5.10.2</version>
+    <version>6.1.3</version>
     <scope>test</scope>
 </dependency>
 <dependency>
     <groupId>org.assertj</groupId>
     <artifactId>assertj-core</artifactId>
-    <version>3.25.3</version>
+    <version>3.27.7</version>
     <scope>test</scope>
 </dependency>
 ```

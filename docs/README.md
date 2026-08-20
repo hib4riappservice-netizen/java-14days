@@ -26,7 +26,7 @@
 | # | ファイル名 | 日本語タイトル | いつ読むか |
 |---|---|---|---|
 | 00 | `00_start-here.md` | はじめに・学習の進め方 | **最初に全部** |
-| 01 | `01_glossary.md` | 用語辞典（226項目） | **分からない語が出るたび** |
+| 01 | `01_glossary.md` | 用語辞典（248項目） | **分からない語が出るたび** |
 | 02 | `02_curriculum-week1.md` | カリキュラム 第1週（Day 0〜7） | 該当日に |
 | 03 | `03_curriculum-week2.md` | カリキュラム 第2週（Day 8〜14） | 該当日に |
 | 04 | `04_setup.md` | 環境構築手順（Git の push 手順・Maven プロジェクト作成・DB準備を含む） | Day 0（Day 3・6・8 でも参照） |
@@ -43,25 +43,28 @@
 
 ## 作業フォルダ構成
 
-リポジトリ `java-14days` の直下に、**5つのフォルダ**を置くだけです。
+リポジトリ `java-14days` の直下に、**4つのファイルと6つのフォルダ**を置きます。
 
-| フォルダ | 中身 | 使う日 |
+| 名前 | 中身 | 使う日 |
 |---|---|---|
+| `README.md` | リポジトリの説明（Day 14 で完成させる） | Day 14 |
+| `.gitignore` | Gitに載せないものの一覧 | Day 0 |
+| `.gitattributes` | 改行コードを LF に固定 | Day 0 |
+| `compose.yaml` | ローカル用 PostgreSQL の定義 | Day 8〜 |
 | `docs/` | **教材**（00〜12。このフォルダ。自分では書き換えない） | 毎日 |
 | `log/` | 学習ログ `day00.md` 〜 `day14.md` | 毎日 |
 | `week1/` | Java の練習コード（Maven プロジェクト） | Day 0〜7 |
 | `week2/` | SQL ファイル（`schema.sql` / `sample-data.sql` / `queries.sql`） | Day 8 |
 | `attendance-api/` | **成果物**の Spring Boot プロジェクト | Day 9〜14 |
+| `.github/workflows/` | CI の定義（`ci.yml`） | Day 13 |
 
 自分で書く設計書は、成果物と一緒に `attendance-api/docs/` へ入れます。
 
-| ファイル | 内容 | 書く日 |
-|---|---|---|
-| `db-design.md` | テーブル設計とその理由 | Day 8 |
-| `api-log.md` | curl のリクエスト／レスポンス記録 | Day 9 |
-| `api-errors.md` | エラーコード一覧 | Day 11 |
-| `coding-standards.md` | 自分のコーディング規約 | Day 12 |
-| `design-ATT-30.md` / `decisions.md` | 設計書と決めごとの記録 | Day 14 |
+- **`db-design.md`**（Day 8）… テーブル設計とその理由
+- **`api-log.md`**（Day 9）… curl のリクエスト／レスポンス記録
+- **`api-errors.md`**（Day 11）… エラーコード一覧
+- **`coding-standards.md`**（Day 12）… 自分のコーディング規約
+- **`design-ATT-30.md`** / **`decisions.md`**（Day 14）… 設計書と決めごとの記録
 
 > **⚠ 教材の `docs/`（このフォルダ）と、自分が書く `attendance-api/docs/` は別物です。**
 > 各日の課題に出てくる「`attendance-api/docs/xxx.md` に書く」は、必ず後者を指します。
@@ -71,11 +74,15 @@
 ## 前提環境
 
 - JDK 21 (LTS)
-- IntelliJ IDEA Community Edition
+- IntelliJ IDEA（2025.3以降の統合版。無料の範囲で完結します）
 - Git / GitHub アカウント
 - Maven（IntelliJ 同梱のもので可）
 - **Docker Desktop**（Day 8 以降。PostgreSQL の起動と、Day 13 の Testcontainers に使用）
 - PostgreSQL 16（Docker Compose で起動。H2 などの簡易DBは使いません）
+- **Spring Boot 4.1系**（Day 9 以降。Spring Initializr の既定バージョン）
+
+> **⚠ Spring Boot 3.x 向けの記事はそのまま使えません。** Boot 4 では、テスト用アノテーションの置き場所（`@WebMvcTest` `@DataJpaTest`）や、自動設定モジュールの分け方（Flyway など）が変わっています。
+> **本教材は Boot 4 前提で書かれており、変更点はその都度「旧はこうだった」と併記しています。**
 
 ### 本教材が採用している「実務標準」
 
@@ -110,7 +117,7 @@
 
 本教材は3回の検証パスを通しています（詳細は `10_review-log.md`）。
 
-- 未定義用語：**0語**（辞典226項目）
+- 未定義用語：**0語**（辞典248項目）
 - 掲載コードの実機検証：**17項目 PASS / 0 FAIL**（JDK 21）
 - 現場事故に直結する必須警告：**欠落0件 / 20項目**
 - 自己チェック項目：**163項目**（Day 0〜14 の⑥自己チェック＋週次の到達確認）

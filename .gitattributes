@@ -1,20 +1,16 @@
-# ===== 改行コードの統一 =====
-# リポジトリ内部・作業ファイルとも LF に統一する。
-# 理由：CI（ubuntu-latest）も本番サーバもコンテナも Linux であり、
-#       改行コードの混在は「Linuxでだけ落ちる」事故と、差分の汚染を招くため。
+# リポジトリ内部・作業ファイルとも LF に統一する
 * text=auto eol=lf
 
 # Windows専用のバッチファイルだけは CRLF でないと動かない
 *.bat text eol=crlf
 *.cmd text eol=crlf
 
-# シェルスクリプトは絶対に LF（CRLF だと Linux で bad interpreter エラー）
+# シェルスクリプトは絶対に LF（CRLF だと Linux で bad interpreter エラーになる）
 *.sh text eol=lf
 
-# 画像・書庫などバイナリは変換しない
+# バイナリは変換しない
 *.png binary
 *.jpg binary
-*.gif binary
 *.pdf binary
 *.zip binary
 *.jar binary

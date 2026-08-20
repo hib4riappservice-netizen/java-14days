@@ -64,12 +64,11 @@ public class EmployeeInfo {
 ```
 
 ### 採点ポイント（自己採点してください）
-| 観点 | できていたか |
-|---|---|
-| メソッドが「1つのことだけ」やっているか | 計算メソッドの中で `println` していないか |
-| メソッド名が動詞で始まっているか | `calculate...` `print...` |
-| 引数と戻り値の型が適切か | 金額は int（Day 6 で BigDecimal に直します） |
-| `printf` の `%6d` で桁揃えできたか | できなくても減点なし。知っておくと便利 |
+
+- **メソッドが「1つのことだけ」やっているか** … 計算メソッドの中で `println` していないか
+- **メソッド名が動詞で始まっているか** … `calculate...` `print...`
+- **引数と戻り値の型が適切か** … 金額は int（Day 6 で BigDecimal に直します）
+- **`printf` の `%6d` で桁揃えできたか** … できなくても減点なし。知っておくと便利
 
 > **`%n` と `\n` の違い**：`%n` はOSに合わせた改行を出します。実務では `%n` が安全です。
 
@@ -707,20 +706,29 @@ class MonthlyAttendanceServiceTest {
 
 ### 指摘4
 ```
-[want] findByEmployeeIdAndWorkDateBetween をループ内で呼んでいます。
-       社員1000人だとN+1になり、性能要件の3秒を超える可能性があります。
+[want] findByEmployee_EmployeeIdAndWorkDateBetween をループ内で呼んでいます。
+       社員999人だとN+1になり、性能要件の3秒を超える可能性があります。
 ```
 **模範回答**
 > ご指摘の通りで、修正しました。
-> ループ内で1000回クエリが飛ぶ実装になっていました。社員IDのリストを渡して1回で取得する形に変更しています。
+> ループ内で999回クエリが飛ぶ実装になっていました。社員IDのリストを渡して1回で取得する形に変更しています。
 > ```java
-> @Query("SELECT a FROM AttendanceEntity a WHERE a.employeeId IN :ids AND a.workDate BETWEEN :from AND :to")
-> List<AttendanceEntity> findByEmployeeIdsAndPeriod(...);
+> // ⚠ AttendanceEntity は employeeId ではなく employee（@ManyToOne）を持つので、
+> //    JPQL では関連をたどって a.employee.employeeId と書く
+> @Query("""
+>     SELECT a FROM AttendanceEntity a
+>     JOIN FETCH a.employee e
+>     WHERE e.employeeId IN :ids AND a.workDate BETWEEN :from AND :to
+>     """)
+> List<AttendanceEntity> findByEmployeeIdsAndPeriod(
+>         @Param("ids") List<String> ids,
+>         @Param("from") LocalDate from,
+>         @Param("to") LocalDate to);
 > ```
 > 取得後に `Collectors.groupingBy` で社員IDごとに分けています。
 >
-> **手元で社員1000人・31日分（31,000件）のデータを投入して計測しました。**
-> - 修正前：14.2秒（クエリ1001回）
+> **手元で社員999人・31日分（30,969件）のデータを投入して計測しました。**
+> - 修正前：14.2秒（クエリ1000回）
 > - 修正後：0.6秒（クエリ1回）
 >
 > 性能要件の3秒以内を満たすことを確認しています。
@@ -847,11 +855,10 @@ public BigDecimal overtimePay(int overtimeMinutes, int hourlyRate) {
 - [ ] 自分でコンフリクトを起こし、マーカーを消して解決し、**ビルドとテストを通してから** push した
 
 ### 境界値テストの作り方（迷ったらこの型）
-| 仕様の言葉 | 書くべきテスト |
-|---|---|
-| 「8時間**を超えたら**残業」 | 7時間59分→0分 ／ 8時間ちょうど→0分 ／ 8時間1分→1分 |
-| 「45時間**を超えたら**アラート」 | 2699分→false ／ 2700分→false ／ 2701分→true |
-| 「0件でも動く」 | 空リスト → 例外を出さず 0 または `Optional.empty()` |
+
+- **「8時間を超えたら残業」** → 7時間59分＝0分 ／ **8時間ちょうど＝0分** ／ 8時間1分＝1分
+- **「45時間を超えたらアラート」** → 2699分＝false ／ **2700分＝false** ／ 2701分＝true
+- **「0件でも動く」** → 空リストを渡して、例外を出さず 0 または `Optional.empty()` が返ること
 
 > **テストが通ったことよりも、「境界のどちら側か」を仕様と突き合わせたことの方が重要です。**
 
@@ -951,9 +958,9 @@ public ResponseEntity<String> handleNotFound(EmployeeNotFoundException e) {
 1. 勤怠一覧を取得するAPIを叩く
 2. ログに出た `Hibernate: select ...` の**行数を数える**（社員10人なら11本出るはず）
 3. `JOIN FETCH` に変えて叩き直す → **1本になる**
-4. **Day 8 で投入した31,000件のデータに対し、修正前と修正後の応答時間を実測する**
+4. **Day 8 で投入した約31,000件のデータに対し、修正前と修正後の応答時間を実測する**
    ```bash
-   curl -w "\n所要時間: %{time_total}秒\n" -o /dev/null -s "http://localhost:8080/api/employees/E0001/attendances?year=2026&month=8"
+   curl -w "\n所要時間: %{time_total}秒\n" -o /dev/null -s "http://localhost:8080/api/employees/E500/attendances?year=2026&month=8"
    ```
 5. 「SQLが何本から何本に減り、何秒が何秒になったか」を `log/day10.md` に書く
 
@@ -973,7 +980,10 @@ public ResponseEntity<String> handleNotFound(EmployeeNotFoundException e) {
 - [ ] traceId がレスポンスとログの**両方に**出ていて、突き合わせられる
 - [ ] `MDC.clear()` を `finally` で呼んでいる
 - [ ] 業務チェック（重複・退職済み・未来日）が **Service**、形式チェックが **Controller** にある
+- [ ] **EMP-04（更新）/ EMP-05（退職）/ ATT-02（打刻修正）が動く**
+- [ ] **実際に社員を退職させてから打刻し、BR-04 が 400 で弾かれることを確認した**
 - [ ] `attendance-api/docs/api-errors.md` にエラーコード一覧がある
+- [ ] **クラスに `@Validated` を付けていない**（付けると `?month=13` が 500 になる）
 
 ### エラーコード一覧表の書き方（課題3の形式例）
 | コード | HTTPステータス | 発生条件 | 呼び出し側の対処 |

@@ -159,7 +159,7 @@ DI しようとした部品が Bean として登録されていません。
 
 ### `Validate failed: Migration checksum mismatch for migration version 1`
 **適用済みのマイグレーションファイルを書き換えました。** これは禁止事項です（Day 10 参照）。
-- 正しい対処：**新しい `V3__fix_xxx.sql` を追加**して直す
+- 正しい対処：**次の連番で新しいファイル（例 `V3__fix_xxx.sql`）を追加**して直す
 - 学習中でデータを捨ててよい場合のみ：`docker compose down -v && docker compose up -d` でDBごと作り直す
 
 ### `column "employeeId" does not exist` のように列名だけ見つからない
@@ -179,6 +179,16 @@ Docker Desktop が起動していません。クジラのアイコンが「runni
 
 ### `No qualifying bean of type 'javax.sql.DataSource'`
 DB接続設定が無いか間違っています。`application.yml` の `spring.datasource` を確認してください。
+
+### `port is already allocated` / `bind: address already in use`（5432番）
+**PCに直接インストールされた PostgreSQL が 5432 を使っています。** Docker のコンテナが同じポートを取れずに起動できません。
+
+```powershell
+# 誰が使っているか調べる（PowerShell）
+Get-Service -Name "postgresql*"
+Get-NetTCPConnection -LocalPort 5432 -State Listen
+```
+対処は `04_setup.md` §0-5 を参照（**既存サービスを止める**のが推奨。`compose.yaml` のポートをずらす方法もあります）。
 
 ### `Connection to localhost:5432 refused`（PostgreSQL）
 DBが起動していません。
@@ -206,8 +216,23 @@ docker compose logs db     # 起動に失敗しているならログを見る
 日付の形式が合っていません。`yyyy-MM-dd` で送るか、`@DateTimeFormat(iso = ISO.DATE)` を付けてください。
 
 ### バリデーションが動かない
-- **`@Valid` を付け忘れていませんか？**（最頻出）
+- **`@Valid` を付け忘れていませんか？**（最頻出。リクエストボディの検証に必要）
 - `spring-boot-starter-validation` の依存関係が pom.xml にありますか？
+
+### `?month=13` が 400 ではなく 500 になる
+**Controller クラスに `@Validated` を付けていませんか？ 付けていたら外してください。**
+Spring Framework 6.1（Boot 3.2）以降、メソッド引数の検証は組み込みで動きます。クラスに `@Validated` があると古いAOP経由の検証が優先され、
+飛ぶ例外が `HandlerMethodValidationException` ではなく **`ConstraintViolationException`** に変わるため、`GlobalExceptionHandler` で拾い漏らして500になります。
+- 対処①：クラスの `@Validated` を外す（推奨）
+- 対処②：`@ExceptionHandler` に `ConstraintViolationException.class` を追加する
+
+### 存在しないURLを叩くと 404 ではなく 500 になる
+`@ExceptionHandler(Exception.class)` が `NoResourceFoundException` まで拾っています。
+`NoResourceFoundException` を個別に 404 で返すハンドラを追加してください（Day 11 参照）。
+
+### 全APIが突然 401 を返すようになった
+**`spring-boot-starter-security` を入れていませんか？** 入れた瞬間に全エンドポイントへ認証がかかります。
+BCrypt（パスワードのハッシュ化）だけが目的なら、**`spring-security-crypto` のみ**を依存に入れてください（Day 13 参照）。
 
 ---
 

@@ -77,9 +77,9 @@ SELECT employee_id, name FROM employees WHERE department = '営業部';
 SELECT * FROM attendances WHERE work_date BETWEEN '2026-08-01' AND '2026-08-31';
 SELECT * FROM employees ORDER BY name ASC LIMIT 10;
 
--- 追加
-INSERT INTO employees (employee_id, name, department, employment_type, hourly_rate)
-VALUES ('E001', '田中太郎', '営業部', 'REGULAR', 2000);
+-- 追加（NOT NULL の列は全部書く。hired_date を忘れると not-null constraint 違反になります）
+INSERT INTO employees (employee_id, name, department, employment_type, hourly_rate, hired_date)
+VALUES ('E001', '田中太郎', '営業部', 'REGULAR', 2000, DATE '2020-04-01');
 
 -- 更新（⚠ WHERE を忘れると全件更新される。実際の重大事故が多数）
 UPDATE employees SET department = '開発部' WHERE employee_id = 'E001';
@@ -180,20 +180,23 @@ for (Employee e : employees) {
 1. `docker compose up -d` でDBを起動し、`docker compose exec db psql -U appuser -d attendance` で接続する
 2. 上記テーブルを作成
 3. サンプルデータを INSERT する。**2段階でやってください**
-   - まず社員5人・勤怠100件（目視で確認できる量）
-   - 次に**本番想定の量**：社員1000人 × 31日 ＝ 約31,000件。`05_project-spec.md` の性能要件（3秒以内）は、この量で測るものです
+   - まず社員5人・勤怠20件程度（目視で確認できる量。**対象月は2026年7月にしておく**）
+   - 次に**本番想定の量**：社員999人 × 31日 ＝ 約31,000件。`05_project-spec.md` の性能要件（3秒以内）は、この量で測るものです
    ```sql
-   -- 社員1000人（E0001〜E1000）
+   -- 社員999人（E001〜E999。社員IDは E+3桁なので最大999人）
    INSERT INTO employees (employee_id, name, department, employment_type, hourly_rate, hired_date)
-   SELECT 'E' || LPAD(i::text, 4, '0'), '社員' || i, '営業部', 'REGULAR', 2000, DATE '2020-04-01'
-   FROM generate_series(1, 1000) AS i;
+   SELECT 'E' || LPAD(i::text, 3, '0'), '社員' || i, '営業部', 'REGULAR', 2000, DATE '2020-04-01'
+   FROM generate_series(1, 999) AS i
+   ON CONFLICT (employee_id) DO NOTHING;      -- 手で入れた E001 等と衝突しても止まらない
 
-   -- 各社員の2026年8月分の勤怠（1000人 × 31日 = 31,000件）
+   -- 各社員の2026年8月分の勤怠（999人 × 31日 = 30,969件）
    INSERT INTO attendances (employee_id, work_date, clock_in, clock_out)
    SELECT e.employee_id, d::date, TIME '09:00', TIME '19:00'
    FROM employees e,
-        generate_series(DATE '2026-08-01', DATE '2026-08-31', INTERVAL '1 day') AS d;
+        generate_series(DATE '2026-08-01', DATE '2026-08-31', INTERVAL '1 day') AS d
+   ON CONFLICT (employee_id, work_date) DO NOTHING;   -- UNIQUE 制約に当たっても止まらない
    ```
+   > **`ON CONFLICT ... DO NOTHING` を付けているのは、`UNIQUE (employee_id, work_date)` があるからです。** これが無いと、手で入れたサンプルと1件でも重なった瞬間に **INSERT 全体がロールバック**されます。
    > **`generate_series` は PostgreSQL の機能です。** 「テスト用に大量データを作る」のは実務で頻繁にやります。**性能問題は、データが少ないうちは絶対に見えません。**
 4. 以下のSQLを自力で書く
    - 営業部の社員一覧
@@ -212,8 +215,14 @@ for (Employee e : employees) {
    - **設計理由を `attendance-api/docs/db-design.md` に書く**（`attendance-api` フォルダはまだ空でよいので、先に作っておく）
 
    > **⚠ ここで作った DDL が、Day 10 でそのまま Flyway の `V1__init.sql` になり、Entity と突き合わされます。**
-   > **仕様書 §3.1 / §3.2 の項目と1対1にしてください。** 勝手に列を足したり減らしたりすると、Day 10 の起動時に
+   > **仕様書 §3.1 / §3.2 の「業務項目」と1対1にしてください。** 勝手に業務項目を足したり減らしたりすると、Day 10 の起動時に
    > `Schema-validation: missing column [xxx]` で止まります。**「スキーマとコードは常に一致していなければならない」ことを、ここで体験することになります。**
+   >
+   > **ただし、以下の「管理列」は業務項目とは別枠で、全テーブルに必ず足してください**（仕様書の項目表には出てきませんが、実務では必須です）。
+   > - `created_at TIMESTAMP NOT NULL` — いつ作られたか
+   > - `updated_at TIMESTAMP NOT NULL` — いつ最後に更新されたか
+   >
+   > **障害調査で「このデータはいつ入ったのか」が分からないと、原因究明が不可能になります。** 業務要件に書かれていなくても付けるもの、という判断ができることが実務力です。
 
    ◆**発展（設計だけ・実装しない）**：`departments`（部署マスタ）に正規化した場合の設計を `db-design.md` に書き、
    **「今回あえて正規化しない理由」**もあわせて記録する。
@@ -305,8 +314,9 @@ Content-Type: application/json
 ### Spring Boot：最小のAPI
 
 **プロジェクト作成**：https://start.spring.io で以下を選択
-- Project: **Maven** / Language: **Java** / Spring Boot: **3.5系（表示されている最新の安定版）**
-- Java: **21**
+- Project: **Maven** / Language: **Java**
+- Spring Boot: **4.1.x（既定で選択されているもの）**
+- Java: **21** ← **⚠ 既定は 17 です。必ず 21 に変更してください**（本教材は Java 21 前提）
 - Group: `com.example` / Artifact: **`attendance-api`** / Package name: `com.example.attendance`
 - Dependencies: **`Spring Web`** と **`Validation`** の**2つだけ**
 
@@ -473,30 +483,24 @@ curl -X POST http://localhost:8080/api/employees \
 ### レイヤードアーキテクチャ
 
 ```
-   HTTPリクエスト
-        ↓
-┌──────────────────────────────────────────┐
-│ Controller層  「受付」                     │
-│  ・HTTPを受け取り、Serviceを呼び、結果を返す  │
-│  ・業務ロジックは書かない                    │
-│  ・DTO(Request/Response)を扱う             │
-└──────────────────────────────────────────┘
-        ↓ 呼ぶ
-┌──────────────────────────────────────────┐
-│ Service層  「頭脳」                        │
-│  ・業務ルールを書く（アプリの心臓部）          │
-│  ・トランザクション境界                      │
-│  ・HTTPのことも SQL のことも知らない          │
-└──────────────────────────────────────────┘
-        ↓ 呼ぶ
-┌──────────────────────────────────────────┐
-│ Repository層  「倉庫番」                   │
-│  ・DBへの読み書きだけ                       │
-│  ・業務ルールは書かない                      │
-│  ・Entityを扱う                            │
-└──────────────────────────────────────────┘
-        ↓
-     データベース
+HTTPリクエスト
+    ↓
+■ Controller層 ―「受付」
+    ・HTTPを受け取り、Serviceを呼び、結果を返す
+    ・業務ロジックは書かない
+    ・DTO(Request/Response)を扱う
+    ↓ 呼ぶ
+■ Service層 ―「頭脳」
+    ・業務ルールを書く（アプリの心臓部）
+    ・トランザクション境界
+    ・HTTPのことも SQL のことも知らない
+    ↓ 呼ぶ
+■ Repository層 ―「倉庫番」
+    ・DBへの読み書きだけ
+    ・業務ルールは書かない
+    ・Entityを扱う
+    ↓
+データベース
 ```
 
 **絶対のルール：依存は上から下への一方向のみ。**
@@ -546,11 +550,30 @@ public record EmployeeResponse(String employeeId, String name, String department
     <artifactId>spring-boot-starter-data-jpa</artifactId>
 </dependency>
 <dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-jpa-test</artifactId>
+    <scope>test</scope>          <!-- ★ Day 13 で使う @DataJpaTest はこちらに入っている -->
+</dependency>
+<dependency>
     <groupId>org.postgresql</groupId>
     <artifactId>postgresql</artifactId>
     <scope>runtime</scope>
 </dependency>
 ```
+
+> **【Spring Boot 4 の重要な作法】`spring-boot-starter-xxx` を足したら、`spring-boot-starter-xxx-test`（testスコープ）も対で足します。**
+> Boot 4 でフレームワークが細かいモジュールに分割され、**テスト用のアノテーションが本体の starter から切り離された**ためです。
+> これを忘れると、Day 13 で `@DataJpaTest` を書いたときに「シンボルが見つかりません」となります。**エラーの原因が「テストの書き方」ではなく「依存の入れ忘れ」なので、非常に気づきにくい**箇所です。
+>
+> 同じ理由で、Day 9 で入れた Web の分も対にしておきます。
+> ```xml
+> <dependency>
+>     <groupId>org.springframework.boot</groupId>
+>     <artifactId>spring-boot-starter-webmvc-test</artifactId>
+>     <scope>test</scope>      <!-- @WebMvcTest / @AutoConfigureMockMvc はこちら -->
+> </dependency>
+> ```
+
 **この時点でアプリは起動しなくなります**（接続先が未設定のため）。この節の最後にある `application.yml` を書けば起動します。**「依存を足す → 設定を書く」はセット**だと覚えてください。
 
 ```java
@@ -579,8 +602,15 @@ public class EmployeeEntity {
     @Column(name = "hired_date", nullable = false)
     private LocalDate hiredDate;
 
+    // NULL 許容（在職中は null）なのでコンストラクタ引数には含めない。Day 11 の BR-04 で使う
+    @Column(name = "retired_date")
+    private LocalDate retiredDate;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
 
     protected EmployeeEntity() {}          // JPAが要求する引数なしコンストラクタ【暗記でOK】
 
@@ -600,10 +630,52 @@ public class EmployeeEntity {
     @PrePersist
     void onCreate() {
         this.createdAt = LocalDateTime.now();   // ⚠ Day 13 で Clock 注入に直します
+        this.updatedAt = this.createdAt;
+    }
+
+    /** 更新直前にJPAが呼ぶ。EMP-04（更新）や EMP-05（退職）で自動的に更新される */
+    @PreUpdate
+    void onUpdate() {
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    /** 部署異動（EMP-04 で使う。@Setter は付けず、業務名のメソッドで変更する） */
+    public void changeDepartment(String newDepartment) {
+        this.department = newDepartment;
+    }
+
+    /** 時給改定（EMP-04 で使う） */
+    public void changeHourlyRate(Integer newHourlyRate) {
+        this.hourlyRate = newHourlyRate;
+    }
+
+    /** 退職する（Day 11 の EMP-05 で使う業務イベント。setter は作らない） */
+    public void retire(LocalDate retiredDate) {
+        if (this.retiredDate != null) {
+            // ⚠ IllegalStateException にしないこと。それだと 500 になります（下の注記）
+            throw new AlreadyRetiredException(employeeId);
+        }
+        this.retiredDate = retiredDate;
+    }
+
+    public boolean isRetired() {
+        return retiredDate != null;
     }
     // ゲッター群...
 }
 ```
+
+> **【重要】業務ルール違反に `IllegalStateException` や `IllegalArgumentException` を使わないでください。**
+> Java標準の例外は「プログラムのバグ」を表すもので、Day 11 の `GlobalExceptionHandler` では拾い漏らして **500（サーバの異常）** になります。
+> 「すでに退職済み」は**利用者の操作が原因**なので、正しくは **409 Conflict** です。**専用のカスタム例外を作り、409 に対応付けます**。
+> ```java
+> public class AlreadyRetiredException extends RuntimeException {
+>     public AlreadyRetiredException(String employeeId) {
+>         super("すでに退職済みです: " + employeeId);
+>     }
+> }
+> ```
+> **「例外の種類 ＝ HTTPステータス」を設計として対応付ける**のが Day 11 の主題です。標準例外を投げた時点で、その対応付けができなくなります。
 
 > **`@PrePersist` を使う理由**：`createdAt` をコンストラクタで入れると、「まだ保存していないオブジェクト」にも作成日時が入ってしまい、意味がずれます。**「DBに入った時刻」はDBに入る直前に決めるのが正しい**です。
 > なお `LocalDateTime.now()` の直接呼び出しは**テストで時刻を固定できない**ため、Day 13 で `Clock` 注入に直します。**今は「あとで直す前提の暫定コード」だと認識しておいてください。**
@@ -756,9 +828,9 @@ IntelliJ 側で **Settings → Build, Execution, Deployment → Compiler → Ann
 public class EmployeeService {
 
     private final EmployeeRepository repository;   // これだけで注入される
-    private final Clock clock;
 }
 ```
+（フィールドを増やせば、そのぶんコンストラクタの引数も自動で増えます。**Day 13 で `Clock` を足すときも、この行に1行足すだけ**です）
 
 **Entity：使ってよいものと、使ってはいけないもの**
 ```java
@@ -845,20 +917,30 @@ logging:
 **依存を追加**（`attendance-api/pom.xml`）
 ```xml
 <dependency>
-    <groupId>org.flywaydb</groupId>
-    <artifactId>flyway-core</artifactId>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-flyway</artifactId>
 </dependency>
 <dependency>
     <groupId>org.flywaydb</groupId>
     <artifactId>flyway-database-postgresql</artifactId>
 </dependency>
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-flyway-test</artifactId>
+    <scope>test</scope>          <!-- テスト時も Flyway でテーブルを作るため -->
+</dependency>
 ```
+
+> **⚠ `flyway-core` だけを入れても動きません。** Boot 4 では**自動設定が技術ごとの別モジュールに分離**されたため、`spring-boot-starter-flyway` を入れないと Flyway が起動時に呼ばれません。
+> しかも**エラーは出ません**。黙ってマイグレーションが走らず、`ddl-auto: validate` が「テーブルが無い」と言って落ちるだけです。**原因表示と実際の原因が一致しない、最も厄介なタイプの詰まり**です。
+> **Boot 4 の「モジュール化」は、Day 9 で学んだ「依存を入れた瞬間に自動設定が始まる」の続編**です。裏返すと、**自動設定モジュールを入れなければ何も始まりません。**
 
 **ファイルの置き方**（Day 8 で書いた `week2/schema.sql` の中身をここへ移します）
 ```
 attendance-api/src/main/resources/db/migration/
 ├── V1__create_employees_and_attendances.sql   ← Day 8 の CREATE TABLE 一式
-└── V2__add_retired_date_to_employees.sql      ← 後から列を足すときは「新しいファイルを追加」
+└── V2__add_password_hash_to_employees.sql     ← 後から列を足すときは「新しいファイルを追加」
+                                                  （実際に Day 13 でこれを作ります）
 ```
 
 命名規則は **`V<連番>__<内容>.sql`（アンダースコア2つ）** です。
@@ -884,7 +966,7 @@ spring:
 
 > **【絶対の鉄則】一度コミットしたマイグレーションファイルは、二度と書き換えないでください。**
 > 他の人のDB・検証環境・本番には**すでに適用済み**だからです。書き換えても再実行されず、しかも Flyway が「中身が変わった」と検出してエラーで止まります（チェックサム不一致）。
-> **修正したいときは、新しい `V3__fix_xxx.sql` を追加します。** これは「過去は変えない、前に進めて直す」という、データベース運用の基本姿勢です。
+> **修正したいときは、新しく、次の連番で `V3__fix_xxx.sql` を追加します。** これは「過去は変えない、前に進めて直す」という、データベース運用の基本姿勢です。
 >
 > **やり直したくなったら**（学習中だけ許される操作）
 > ```bash
@@ -944,7 +1026,7 @@ class EmployeeServiceTest {
 
 ---
 
-# Day 11：バリデーション・例外ハンドリング・設定管理（所要8.5時間）
+# Day 11：バリデーション・例外ハンドリング・設定管理（所要9時間）
 
 ## ① 今日のゴール
 - 不正な入力を安全に弾ける
@@ -995,12 +1077,12 @@ public ResponseEntity<EmployeeResponse> create(@Valid @RequestBody EmployeeCreat
 
 ### クエリパラメータ・パス変数の検証（`@RequestBody` だけでは足りない）
 
-`?year=2026&month=13` のような**URLに乗ってくる値**は、`@Valid @RequestBody` では検証されません。**クラスに `@Validated` を付ける**必要があります。
+`?year=2026&month=13` のような**URLに乗ってくる値**は、`@Valid @RequestBody` では検証されません。**引数に直接、制約アノテーションを付けます。**
 
 ```java
 @RestController
-@Validated                                   // ← これが無いと下の @Min/@Max は完全に無視される
 @RequestMapping("/api/employees")
+// ⚠ クラスに @Validated は付けないこと（理由は下の注記）
 public class EmployeeController {
 
     @GetMapping("/{id}/summary")
@@ -1015,11 +1097,15 @@ public class EmployeeController {
 
 | 検証したい場所 | 必要なもの | 違反時に飛ぶ例外 |
 |---|---|---|
-| `@RequestBody`（JSON本体） | 引数に `@Valid` | `MethodArgumentNotValidException` |
-| `@RequestParam` / `@PathVariable` | **クラスに `@Validated`** ＋ 引数に制約 | `HandlerMethodValidationException`（Spring Boot 3.4以降） |
+| `@RequestBody`（JSON本体） | 引数に **`@Valid`** | `MethodArgumentNotValidException` |
+| `@RequestParam` / `@PathVariable` | **引数に制約アノテーションを付けるだけ** | `HandlerMethodValidationException` |
 
-> **`@Validated` の付け忘れは、`@Valid` の付け忘れより気づきにくい**です。バリデーションが**エラーも出さずに素通り**し、不正な値がそのまま Service に届きます。
-> **確認方法は1つ**：`?month=13` を実際に叩いて **400 が返ることを目で見る**。「付けたつもり」で終わらせないでください。
+> **【重要・古い記事に注意】ネット上には「クラスに `@Validated` を付けろ」という記事が大量にありますが、それは Spring Framework 6.0 以前の話です。**
+> **Spring Framework 6.1（Spring Boot 3.2）以降、Spring MVC はメソッド引数の検証を組み込みで行うようになりました。** そのため `@Validated` は不要です。
+> **それどころか、クラスに `@Validated` を付けると有害です。** AOPプロキシ経由の古い検証が優先され、組み込みの検証が働かなくなり、飛ぶ例外が `HandlerMethodValidationException` ではなく **`ConstraintViolationException`** に変わります。下の `GlobalExceptionHandler` で拾い漏らすと **400 のはずが 500 になります**。
+> Spring 公式リファレンスも「6.1 の組み込みメソッド検証を活かすには、コントローラからクラスレベルの `@Validated` を外す必要がある」と明記しています。
+>
+> **確認方法**：`?month=13` を実際に叩いて **400 が返ることを目で見る**。**500 が返ったら、まずクラスに `@Validated` が付いていないか疑ってください。**
 
 ### バリデーションの2段構え（これが実務の設計）
 | 層 | 何をチェックするか | 例 |
@@ -1070,18 +1156,21 @@ public class GlobalExceptionHandler {
                                     List.of(), MDC.get("traceId")));
     }
 
-    // 業務例外：重複 → 409
-    @ExceptionHandler(DuplicateEmployeeException.class)
-    public ResponseEntity<ErrorResponse> handleDuplicate(DuplicateEmployeeException e) {
+    // 業務例外：競合 → 409（重複登録・二重打刻・二重退職など）
+    @ExceptionHandler({DuplicateEmployeeException.class,
+                       DuplicateAttendanceException.class,
+                       AlreadyRetiredException.class})
+    public ResponseEntity<ErrorResponse> handleConflict(RuntimeException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
-            .body(new ErrorResponse("DUPLICATE_EMPLOYEE", e.getMessage(),
+            .body(new ErrorResponse("CONFLICT", e.getMessage(),
                                     List.of(), MDC.get("traceId")));
     }
 
-    // ⚠ 以下の3つは「クライアントが悪い」ので必ず400。個別に書かないと、下の handleUnexpected に
+    // ⚠ 以下は「クライアントが悪い」ので必ず400。個別に書かないと、下の handleUnexpected に
     //    吸い込まれて500になります（＝Day 9 で「やってはいけない」と学んだ状態）
     @ExceptionHandler({
         HandlerMethodValidationException.class,      // ?month=13 など（クエリ/パス変数の制約違反）
+        ConstraintViolationException.class,          // 同上。クラスに @Validated を付けた場合はこちらが飛ぶ
         MethodArgumentTypeMismatchException.class,   // ?month=abc など（型変換に失敗）
         HttpMessageNotReadableException.class        // 壊れたJSON、必須のリクエストボディが空
     })
@@ -1089,6 +1178,14 @@ public class GlobalExceptionHandler {
         log.warn("不正なリクエスト: {}", e.getMessage());
         return ResponseEntity.badRequest()
             .body(new ErrorResponse("BAD_REQUEST", "リクエストの形式を確認してください",
+                                    List.of(), MDC.get("traceId")));
+    }
+
+    // 存在しないURLへのアクセスは 404（これが無いと下の handleUnexpected が拾って500になります）
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNoResource(NoResourceFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(new ErrorResponse("NOT_FOUND", "指定されたURLは存在しません",
                                     List.of(), MDC.get("traceId")));
     }
 
@@ -1105,7 +1202,8 @@ public class GlobalExceptionHandler {
 ```
 
 > **`@ExceptionHandler(Exception.class)` を1つ置くと、書き忘れた例外が全部500になります。**
-> Spring はより具体的なハンドラを優先するので、**400で返すべきものを1つずつ明示的に書き出す**必要があります。
+> Spring はより具体的なハンドラを優先するので、**400・404 で返すべきものを1つずつ明示的に書き出す**必要があります。
+> **特に見落とすのが `NoResourceFoundException`（存在しないURL）です。** これを書かないと、URLを打ち間違えただけで 500 が返る API になります。「エラーを全部500で返すAPIは現場で必ず指摘される」（Day 9）の、最も踏みやすい実例です。
 > **「壊れたJSONを送ったら500が返るAPI」は、利用者が自分の誤りに気づけません。** Day 9 で学んだ「404と500の使い分け」と同じ話です。
 > **確認方法**：`curl` で `{"employeeId":` のような壊れたJSONを送り、**400 が返ることを確かめてください。**
 
@@ -1153,7 +1251,7 @@ application-prod.yml    # 本番用
 2. `GlobalExceptionHandler` を実装
 3. 以下を curl で叩いて、返るステータスコードとJSONを確認
    - 必須項目を空にする → 400
-   - `?month=13` を指定する → 400（`@Validated` が効いているか）
+   - `?month=13` を指定する → 400（引数の制約アノテーションが効いているか。**500 が返ったら、クラスに `@Validated` を付けていないか疑う**）
    - `?month=abc` を指定する → 400（型変換の失敗が500になっていないか）
    - 壊れたJSON（`{"employeeId":`）を送る → 400
    - 存在しないIDを取得 → 404
@@ -1170,12 +1268,21 @@ application-prod.yml    # 本番用
    - 未来日の打刻を禁止
    - 退職済み社員の打刻を禁止
 2. すべてに専用のカスタム例外と適切なHTTPステータスを割り当てる
-3. `attendance-api/docs/api-errors.md` に **エラーコード一覧表** を作る（コード / HTTPステータス / 発生条件 / 対処）
-4. local / dev の2プロファイルを作り、切り替えて起動できることを確認
+3. **EMP-04 / EMP-05 / ATT-02 を実装する**（`05_project-spec.md` §3.1 / §3.2）
+   - `PUT /api/employees/{employeeId}` — 社員情報の更新
+   - `PATCH /api/employees/{employeeId}/retire` — 退職扱いにする（`retiredDate` をセット。すでに退職済みなら 409）
+   - `PUT /api/attendances/{id}` — 打刻の修正（`api-errors.md` の「修正APIを使う」の実体）
+   - **リクエストDTOを新たに作る**：`EmployeeUpdateRequest`（部署・時給など変更可能な項目のみ）、`AttendanceUpdateRequest`
+   - **Entity に `@Setter` を付けてはいけません。** `changeDepartment()` / `changeHourlyRate()` / `retire()` のように、**業務イベントを表す名前のメソッド**を追加して変更します（Day 3 と Day 10 で学んだ通り）
+   > **EMP-05 を先に作らないと、課題1の「退職済み社員の打刻を禁止」（BR-04）が動作確認できません。** 退職状態を作る手段が無いためです。**「テストできる状態を先に作る」**という順序の感覚を、ここで身につけてください。
+   > **更新できる項目を DTO で絞ること自体が設計です。** `employeeId` や `hiredDate` まで更新可能にすると、「主キーを書き換えられるAPI」という事故になります。
+4. `attendance-api/docs/api-errors.md` に **エラーコード一覧表** を作る（コード / HTTPステータス / 発生条件 / 対処）
+5. local / dev の2プロファイルを作り、切り替えて起動できることを確認
 
 ## ⑥ 自己チェック
 - [ ] `@Valid` を付け忘れるとどうなるか説明できる
-- [ ] **`@Valid`（リクエストボディ）と `@Validated`（クエリパラメータ）の使い分けを説明できる**
+- [ ] **`@Valid`（リクエストボディ）と、引数に付ける制約アノテーション（クエリ／パス変数）の使い分けを説明できる**
+- [ ] **Controller クラスに `@Validated` を付けてはいけない理由を説明できる**
 - [ ] **型変換の失敗や壊れたJSONが500にならないよう、400を明示的に返している**
 - [ ] Controller と Service でチェックすべき内容の違いを説明できる
 - [ ] 重複チェックが Controller でできない理由を説明できる
@@ -1495,7 +1602,7 @@ public class Svc {
 
 ---
 
-# Day 13：テスト戦略・CI・セキュリティ最低限（所要8.5時間）
+# Day 13：テスト戦略・CI・セキュリティ最低限（所要9時間）
 
 ## ① 今日のゴール
 - 単体／結合テストを適切に使い分けられる
@@ -1544,6 +1651,16 @@ class AttendanceServiceTest {
 }
 ```
 
+> **【Spring Boot 4 で import 先が変わりました】** 古い記事のコードを貼ると「シンボルが見つかりません」になります。
+> ```java
+> import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;             // 旧: ...test.autoconfigure.web.servlet
+> import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;   // 同上
+> import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;          // 旧: ...test.autoconfigure.orm.jpa
+> import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;// 旧: ...test.autoconfigure.jdbc
+> import org.springframework.boot.test.context.SpringBootTest;                      // これは変更なし
+> ```
+> **IntelliJ の `Alt + Enter`（import の自動追加）を使えば、正しい方を選んでくれます。** 手で書き写さないこと。
+
 ```java
 // ② Controller のテスト（HTTP層だけ・Serviceはモック）
 @WebMvcTest(AttendanceController.class)
@@ -1552,7 +1669,7 @@ class AttendanceControllerTest {
 
     // Spring Boot 3.4 以降は @MockitoBean を使います
     // （org.springframework.test.context.bean.override.mockito.MockitoBean）
-    // 古い記事に出てくる @MockBean は非推奨になりました。3.3以前を使う場合のみ @MockBean です
+    // 古い記事の @MockBean は Boot 3.4 で非推奨になりました。Boot 4 では @MockitoBean を使います
     @MockitoBean AttendanceService service;
 
     @Test
@@ -1622,21 +1739,25 @@ class AttendanceRepositoryTest {
 </dependency>
 <dependency>
     <groupId>org.testcontainers</groupId>
-    <artifactId>postgresql</artifactId>
+    <artifactId>testcontainers-postgresql</artifactId>   <!-- ⚠ 接頭辞 testcontainers- が必要 -->
     <scope>test</scope>
 </dependency>
 <dependency>
     <groupId>org.testcontainers</groupId>
-    <artifactId>junit-jupiter</artifactId>
+    <artifactId>testcontainers-junit-jupiter</artifactId>
     <scope>test</scope>
 </dependency>
 ```
-（`spring-boot-starter-parent` を使っていればバージョン指定は不要です。**バージョン管理を親に任せるのも実務の作法**で、ライブラリ同士の相性問題を避けられます）
+> **⚠ `org.testcontainers:postgresql` という古い書き方は使えません。** Testcontainers 2.0 で全モジュールが `testcontainers-` 接頭辞付きに改名されました。
+> 古い名前のまま書くと `'dependencies.dependency.version' ... is missing` でビルドできません（Boot の BOM が新しい名前しか管理していないため）。
+> **ネット上の記事はまだ旧名のものが大半です。** ライブラリのメジャーバージョンが上がったときは、**公式のリリースノートで名前の変更を確認する**——これも実務の作法です。
+
+（バージョンは `spring-boot-starter-parent` が管理するので書きません。**バージョン管理を親に任せるのが実務の作法**で、ライブラリ同士の相性問題を避けられます）
 
 **必要な import**
 ```java
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;      // ⚠ Testcontainers 2.x の新しい場所
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 ```
@@ -1723,9 +1844,9 @@ jobs:
       run:
         working-directory: attendance-api   # ⚠ pom.xml があるフォルダを指定する
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -1754,6 +1875,19 @@ jobs:
 5. **ログに個人情報・パスワード・カード番号を出さない**
 6. **入力は必ず検証する**。「クライアント側でチェックしているから大丈夫」は通用しない（**クライアントは改竄できる**）
 7. **ライブラリを古いまま放置しない**。既知の脆弱性が入ります（OWASP Dependency-Check（`mvn org.owasp:dependency-check-maven:check`）や GitHub の Dependabot を使う）
+
+**依存を追加します**（`attendance-api/pom.xml`）。
+```xml
+<dependency>
+    <groupId>org.springframework.security</groupId>
+    <artifactId>spring-security-crypto</artifactId>
+</dependency>
+```
+
+> **⚠ `spring-boot-starter-security` を入れてはいけません。**
+> 検索すると真っ先に出てきますが、これを入れると **Spring Security の自動設定が全エンドポイントに認証をかけます**。
+> その瞬間に **Day 9〜11 で作った curl の確認が全部 401 になり、`@WebMvcTest` / `@SpringBootTest` のテストも全部 401 で落ちます**。CI構築日に原因不明の全面赤を招く、典型的な事故です。
+> **今日必要なのは「ハッシュ化の道具」だけ**なので、`spring-security-crypto` だけを入れます。認証・認可の仕組みそのものは 15日目以降の学習項目です。
 
 ```java
 // パスワードの正しい扱い
@@ -1797,7 +1931,7 @@ Clock fixed = Clock.fixed(Instant.parse("2026-08-15T09:00:00Z"), ZoneId.of("Asia
 ```
 3. CI を設定し、緑（成功）になるまで直す
 4. パスワード項目を追加し、BCrypt でハッシュ化して保存する
-   - **列の追加は `V3__add_password_hash.sql` を新規作成して行う**（既存のマイグレーションファイルは書き換えない）
+   - **列の追加は `V2__add_password_hash_to_employees.sql` を新規作成して行う**（既存のマイグレーションファイルは書き換えない）
 5. **`mvn clean verify` を、DBを一度も手で起動せずに実行できることを確認する**
    - できなければ、まだテストがローカルDBに依存しています。**「新しく入った人が clone して即テストできるか」が判定基準**です
 
@@ -1818,7 +1952,7 @@ Clock fixed = Clock.fixed(Instant.parse("2026-08-15T09:00:00Z"), ZoneId.of("Asia
 
 ---
 
-# Day 14：総合演習と現場の作法（所要9〜10時間 ／ 実装は持ち越し可）
+# Day 14：総合演習と現場の作法（所要9.5時間 ＋ 最終テスト120分 ＝ 実質11.5時間 ／ 最終課題60分は翌日以降に持ち越し可）
 
 ## ① 今日のゴール
 - 仕様→設計→実装→テスト→PR→レビュー対応の**1サイクルを一人で回せる**
@@ -1917,7 +2051,7 @@ NullPointerException: Cannot invoke "AttendanceEntity.getClockOut()" because "en
 - 労務アラート（月の残業が45時間を超えたら警告フラグ）
 
 【非機能要件】
-- 社員1000人でも3秒以内に応答すること
+- 社員999人でも3秒以内に応答すること
 - エラー時は原因が分かるレスポンスを返すこと
 ```
 
@@ -1929,6 +2063,7 @@ NullPointerException: Cannot invoke "AttendanceEntity.getClockOut()" because "en
 - 45時間の判定は「超えたら」か「以上」か？
 - 退職済み社員も対象か？
 - 深夜割増・休日割増は考慮するか？
+- **チケットには「雇用形態別の単価」とあるが、仕様書 §3.3 は「時給は社員ごとの `hourlyRate` を使う」と明記している。どちらが正か？**（← **これに気づけたら一番の収穫です。チケットと仕様書が食い違っているのは実務で日常的に起きます**）
 
 > **この工程を飛ばす人が、後で手戻りします。「曖昧点に気づける」ことが設計スキルの第一歩です。**
 > 実務では今すぐ聞けます。今回は自分で仕様を決め、`attendance-api/docs/decisions.md` に **「決めたこと」と「その根拠」** を記録してください。この文書は入社後もそのまま使える形式です。
@@ -1938,7 +2073,7 @@ NullPointerException: Cannot invoke "AttendanceEntity.getClockOut()" because "en
 - エンドポイント定義（URL / メソッド / リクエスト / レスポンスのJSON例）
 - クラス構成（Controller / Service / Repository / DTO / Entity の一覧と各責務）
 - 処理フロー（箇条書きでよい）
-- 使用するSQL（1000人×31日 = 31000件を1クエリで取れる形にする）
+- 使用するSQL（999人×31日 = 約31000件を1クエリで取れる形にする）
 - エラーケースと返すステータスコード一覧
 - **性能要件を満たす根拠**（N+1を避ける方法を明記）
 
@@ -1951,7 +2086,7 @@ NullPointerException: Cannot invoke "AttendanceEntity.getClockOut()" because "en
 @Test void 勤怠データが0件の社員は全項目0で返る() {}
 @Test void 存在しない社員IDは404を返す() {}
 @Test void 不正な月_13_は400を返す() {}
-@Test void アルバイトは時給1200円で残業代が計算される() {}
+@Test void 時給1200円の社員の残業1時間が1500円で計算される() {}
 // ...
 ```
 
@@ -1978,8 +2113,8 @@ Day 12 のチェックリストで自分のコードを全部見直す。
 
 [want] 45 という数字がコードに直接書かれています。労務基準の変更に備えて定数化を推奨します。
 
-[want] findByEmployeeIdAndWorkDateBetween をループ内で呼んでいます。
-       社員1000人だとN+1になり、性能要件の3秒を超える可能性があります。
+[want] findByEmployee_EmployeeIdAndWorkDateBetween をループ内で呼んでいます。
+       社員999人だとN+1になり、性能要件の3秒を超える可能性があります。
 
 [ask]  退勤打刻が無いレコードを黙ってスキップしていますが、
        これは意図的でしょうか？打刻漏れが検知できなくなりませんか？
@@ -2028,11 +2163,9 @@ Day 12 のチェックリストで自分のコードを全部見直す。
 **今夜、`09_assessment.md` の「最終テスト」を必ず実施してください。**
 IDEとネット検索は使って構いません（実務と同じ条件です）。教材だけ見ないでください。
 
-| 得点 | 判定 |
-|---|---|
-| **85点以上** | 🟢 即戦力。現場で「使える新人」と言われるレベル |
-| **70〜84点** | 🟢 **合格。** 現場に出て問題ありません |
-| **70点未満** | 🟡 落とした分野を `06_roadmap-6months.md` の第1ヶ月の重点に組み込んでください |
+- **85点以上** … 🟢 即戦力。現場で「使える新人」と言われるレベル
+- **70〜84点** … 🟢 **合格。** 現場に出て問題ありません
+- **70点未満** … 🟡 落とした分野を `06_roadmap-6months.md` の第1ヶ月の重点に組み込んでください
 
 **この2週間の成果は、あなたの感覚ではなく、この点数で確認してください。**
 そして採点後、落とした設問の一覧を `log/final-assessment.md` に残してください。**それが入社後の最初の宿題になります。**
