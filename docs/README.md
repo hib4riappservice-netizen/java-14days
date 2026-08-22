@@ -39,6 +39,7 @@
 | 11 | `11_conversation-log.md` | 会話記録 | 制作の経緯 |
 | 12 | `12_design-decisions.md` | 作業記録・設計判断 | 設計判断と検証ログ |
 | 13 | `13_daily-commands.md` | 毎日使うコマンド早見表（Git・Maven・Docker・psql） | **Day 1 以降、毎日** |
+| 14 | `14_self-check-answers.md` | 自己チェック（⑥）の模範解答集 | **答えられなかった項目だけ、その日の最後に** |
 
 ---
 
