@@ -160,6 +160,32 @@ ps.setString(1, userInput);
 ```
 **「SQLを文字列連結で組み立てない」は絶対ルールです。** これは実際に企業が個人情報を大量流出させている、最も有名な脆弱性です。
 
+### JDBC の基本形（接続〜結果の読み出しまで）
+
+上の例は「SQLの組み立て方」だけでした。実際にDBへ接続し、結果を受け取るところまでの全体像は以下の形です（`Connection`・`PreparedStatement`・`ResultSet`はいずれもDay 6で学んだtry-with-resourcesで開きます。開けっ放しにすると資源が枯渇するため必須です）。
+
+```java
+String sql = "SELECT employee_id, name FROM employees WHERE employee_id = ?";
+
+try (Connection conn = DriverManager.getConnection(
+            "jdbc:postgresql://localhost:5432/attendance", "appuser", "localdevonly");
+     PreparedStatement ps = conn.prepareStatement(sql)) {
+
+    ps.setString(1, userInput);
+
+    try (ResultSet rs = ps.executeQuery()) {   // 検索結果の「カーソル」
+        while (rs.next()) {                    // 1行ずつ次に進める。無ければfalse
+            String id = rs.getString("employee_id");
+            String name = rs.getString("name");
+            System.out.println(id + ": " + name);
+        }
+    }
+} catch (SQLException e) {
+    log.error("社員の取得に失敗しました", e);
+}
+```
+`ResultSet`は「検索結果の行を1件ずつ読むためのカーソル」です。`rs.next()`で次の行に進み（無ければfalseになりループが終わる）、`rs.getString("列名")`でその行の値を取り出します。
+
 ### N+1問題（性能問題の最頻出パターン）
 ```java
 List<Employee> employees = repository.findAll();          // 1回のクエリ
@@ -198,6 +224,7 @@ for (Employee e : employees) {
    ```
    > **`ON CONFLICT ... DO NOTHING` を付けているのは、`UNIQUE (employee_id, work_date)` があるからです。** これが無いと、手で入れたサンプルと1件でも重なった瞬間に **INSERT 全体がロールバック**されます。
    > **`generate_series` は PostgreSQL の機能です。** 「テスト用に大量データを作る」のは実務で頻繁にやります。**性能問題は、データが少ないうちは絶対に見えません。**
+   > **その他の記法**：`||` は文字列連結（`'E' || '001'` → `'E001'`）。`i::text` は型変換（整数`i`を文字列に変換する、PostgreSQL独自の書き方）。`LPAD(文字列, 桁数, 埋める文字)` は指定桁数になるまで左側を埋める関数（`LPAD('7', 3, '0')` → `'007'`）。
 4. 以下のSQLを自力で書く
    - 営業部の社員一覧
    - 2026年8月の勤怠を社員名付きで取得
@@ -476,7 +503,7 @@ curl -X POST http://localhost:8080/api/employees \
 - Spring Data JPA でDBに読み書きできる
 
 ## ② 新出用語
-レイヤードアーキテクチャ / Controller / Service / Repository / Entity / DTO / @Entity / @Id / JpaRepository / @Transactional / マッピング / 単方向依存 / @ManyToOne / 遅延ロード / Flyway / マイグレーション / Lombok
+レイヤードアーキテクチャ / Controller / Service / Repository / Entity / DTO / @Entity / @Id / JpaRepository / @Transactional / マッピング / 単方向依存 / @ManyToOne / 遅延ロード / Flyway / マイグレーション / Lombok / Mockito / モック
 
 ## ③ 座学（180分）
 
@@ -789,7 +816,7 @@ public class EmployeeService {
     @Transactional                              // 書き込みがあるのでこちらを上書き指定
     public EmployeeResponse create(EmployeeCreateRequest request) {
         if (repository.existsById(request.employeeId())) {
-            throw new DuplicateEmployeeException(request.employeeId());
+            throw new DuplicateEmployeeException(request.employeeId());   // 自作の例外。下記の形で用意する
         }
         EmployeeEntity entity = new EmployeeEntity(
             request.employeeId(), request.name(), request.department(),
@@ -800,6 +827,14 @@ public class EmployeeService {
 
     private EmployeeResponse toResponse(EmployeeEntity e) {
         return new EmployeeResponse(e.getEmployeeId(), e.getName(), e.getDepartment());
+    }
+}
+```
+`DuplicateEmployeeException` は自分で用意するカスタム例外です（Day 6 の形と同じ）。
+```java
+public class DuplicateEmployeeException extends RuntimeException {
+    public DuplicateEmployeeException(String employeeId) {
+        super("既に登録済みの社員IDです: " + employeeId);
     }
 }
 ```
@@ -994,16 +1029,19 @@ spring:
 List<AttendanceEntity> findWithEmployee(@Param("from") LocalDate from, @Param("to") LocalDate to);
 ```
 5. Service の単体テストを書く（Repository は Mockito でモック化）
+
+   > **Mockito の書き方は Day 13 の座学で正式に扱います。** 今日は以下をそのまま写経して構いません。**`@Mock` を付けた `EmployeeRepository` は本物のDBに繋がらない「偽物」で、`when(...).thenReturn(...)` でその偽物が何を返すか自分で決められます。** `@InjectMocks` を付けた `EmployeeService` には、その偽物の Repository が自動的に注入されます。
+
 ```java
-@ExtendWith(MockitoExtension.class)
+@ExtendWith(MockitoExtension.class)   // Mockitoを使うテストであることをJUnitに伝える
 class EmployeeServiceTest {
 
-    @Mock  EmployeeRepository repository;
-    @InjectMocks EmployeeService service;
+    @Mock  EmployeeRepository repository;      // 偽物（モック）を作る
+    @InjectMocks EmployeeService service;      // 偽物を注入したServiceを作る
 
     @Test
     void 存在しない社員IDなら例外が投げられる() {
-        when(repository.findById("E999")).thenReturn(Optional.empty());
+        when(repository.findById("E999")).thenReturn(Optional.empty());   // 偽物の振る舞いを決める
 
         assertThatThrownBy(() -> service.findById("E999"))
             .isInstanceOf(EmployeeNotFoundException.class);
@@ -1352,6 +1390,7 @@ public class AttendanceService {
     }
 }
 ```
+> **`Command` という名前について**：Day 10 で作った `〜Request`（`EmployeeCreateRequest`等）はControllerが受け取るDTOでした。`〜Command`はそれを**Serviceに渡すための入力オブジェクト**で、役割は同じ「データの入れ物」です。呼び方を変えることで「Controller境界の型」と「Service内部の型」を区別する現場の慣習ですが、**本教材ではここまで厳密に分けなくても構いません**（`〜Request`をそのままServiceに渡しても問題ありません）。ここでは「責務ごとに分割する」設計の例として読んでください。
 
 **判定法**：「このクラスを説明するとき『〜と〜をする』と "と" が必要なら、責務が多すぎます。**"と" を使わずに1文で説明できるか**」がチェックポイントです。
 
@@ -1610,7 +1649,7 @@ public class Svc {
 - 新人がやりがちな危険なコードを避けられる
 
 ## ② 新出用語
-テストピラミッド / 結合テスト / @SpringBootTest / @WebMvcTest / @DataJpaTest / MockMvc / Testcontainers / CI / GitHub Actions / OWASP / XSS / CSRF / ハッシュ化
+テストピラミッド / 結合テスト / @SpringBootTest / @WebMvcTest / @DataJpaTest / MockMvc / Testcontainers / CI / GitHub Actions / OWASP / XSS / CSRF / ハッシュ化 / @Configuration / @Bean
 
 ## ③ 座学（150分）
 
@@ -1891,15 +1930,20 @@ jobs:
 
 ```java
 // パスワードの正しい扱い
-@Bean
-public PasswordEncoder passwordEncoder() {
-    return new BCryptPasswordEncoder();
+@Configuration                              // ← このクラスは「Bean の作り方」をまとめて登録する場所
+public class SecurityConfig {
+
+    @Bean                                    // ← このメソッドの戻り値をSpringに管理させる（Beanにする）
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
 }
 // 保存時
 String hash = passwordEncoder.encode(rawPassword);
 // 照合時（復号はできない。ハッシュ同士を比較する）
 boolean ok = passwordEncoder.matches(inputPassword, storedHash);
 ```
+> **`@Configuration` + `@Bean` について**：`@Service`を付けたクラスは自動でBeanになりますが、`PasswordEncoder`（`BCryptPasswordEncoder`）は自分で書いたクラスではないので`@Service`を付けられません。**「外部の型をBeanにしたい」ときは、`@Configuration`クラスの中に`@Bean`メソッドを書きます。** メソッドの戻り値がそのままBeanとして登録され、他のクラスのコンストラクタで受け取れるようになります（下のClock注入でも同じ形を使います）。
 
 ## ④ ハンズオン（120分）
 1. Testcontainers の依存を追加し、**Repository テストが本物の PostgreSQL 上で動くこと**を確認する
@@ -1918,6 +1962,17 @@ boolean ok = passwordEncoder.matches(inputPassword, storedHash);
    - Repository のテスト
    - 結合テスト（打刻→集計の通し）
 2. `LocalDate.now()` を直接使っている箇所を `Clock` 注入に直し、テストで時刻を固定できるようにする
+
+   まず `Clock` を Bean として登録します（`Clock` も自分で書いたクラスではないので、上の `PasswordEncoder` と同じく `@Configuration` + `@Bean` で登録します）。
+```java
+@Configuration
+public class TimeConfig {
+    @Bean
+    public Clock clock() {
+        return Clock.systemDefaultZone();   // 通常は「今の時刻」を返すClockを登録する
+    }
+}
+```
 ```java
 @Service
 public class AttendanceService {
@@ -1926,8 +1981,9 @@ public class AttendanceService {
     // 使う側
     LocalDate today = LocalDate.now(clock);
 }
-// テスト側
+// テスト側（Beanは使わず、テストごとに固定時刻のClockを自分でnewして渡す）
 Clock fixed = Clock.fixed(Instant.parse("2026-08-15T09:00:00Z"), ZoneId.of("Asia/Tokyo"));
+AttendanceService service = new AttendanceService(fixed, ...);
 ```
 3. CI を設定し、緑（成功）になるまで直す
 4. パスワード項目を追加し、BCrypt でハッシュ化して保存する
